@@ -87,17 +87,33 @@ python scripts\run_ps4.py --input data\raw\your_clip-h264.mp4
 
 A short test is `--max-frames 300`.
 
-### Upload a clip in the browser
+### Open the dashboard
 
-With the virtual environment activated:
+From the repo root, with the virtual environment activated:
 
 ```bash
 streamlit run app/workbench.py
 ```
 
-On Windows that is `streamlit run app\workbench.py`.
+On Windows:
 
-Open the local page, upload an MP4, choose how many seconds to process, and press Run. The file is saved in `data/raw/` and the side-by-side video, JSONL, report, and sim files are written to `outputs/`. Both folders stay off GitHub. Enter `0` to process the whole clip. One minute of video takes a few minutes on CPU. The MediaPipe model from the setup steps above has to be present before Run will start.
+```powershell
+streamlit run app\workbench.py
+```
+
+Open [http://localhost:8501](http://localhost:8501). The page loads the processed run that has a scorecard. **Present** hides the sidebar for the judging view.
+
+The sidebar is where a new clip is run. Choose an MP4, MOV, AVI, or MKV, set **Seconds to process** (`0` means the whole file), and press **Run analysis**. The MediaPipe model from the setup steps has to be on disk first. The upload is saved in `data/raw/`. The side-by-side video, JSONL, report, and sim files are written to `outputs/`. Both folders stay off GitHub. One minute of video takes a few minutes on CPU.
+
+![Dashboard home. Headline, upload sidebar, and the selected run.](docs/dashboard/overview.png)
+
+Under the video, the spec strip shows detection, trust, identity lock, WiLoR agreement, hand balance, wrist risk, and cycles. **Inspect** is the frame scrubber. **Quality** is the longer scorecard. **Export** downloads the report, JSONL, and world-frame files.
+
+![Spec strip and the frame inspector.](docs/dashboard/specs.png)
+
+To see the mesh, stay on **Inspect**, move the frame slider onto a frame that has a hand, and leave **Coordinate space** on **mesh**. That surface is the saved WiLoR result (778 vertices per hand). **world**, **camera**, and **world_fixed** switch the same frame to the other coordinate systems. The pictures below are the interface and the reconstructed mesh. They are not frames from the source video.
+
+![WiLoR mesh in the frame inspector.](docs/dashboard/mesh.png)
 
 ### Optional WiLoR mesh (NVIDIA GPU)
 
@@ -310,6 +326,49 @@ HaWoR is the optional heavier alternative to the fallback (same role as WiLoR fo
 mesh): a future GPU runner can supply its own per-frame camera trajectory to
 `attach_world`, or write world-space hands directly into `world_fixed`, reusing
 this export path unchanged.
+
+## Hand-anchored scale and contact grounding
+
+On by default with the world stage (`--no-ground` disables). The operator's own
+hand calibrates the scene, which removes the monocular up-to-scale caveat
+*approximately* instead of ignoring it:
+
+1. **Ego-scale from anthropometry.** Trusted bone lengths (metacarpals, proximal
+   and intermediate phalanges) are compared with adult anthropometric means to
+   get a per-clip hand-size scale. MediaPipe's nominal hand units are typically
+   15–25% undersized.
+2. **Trajectory scale from contacts.** During a grasp/hold the hand is stationary
+   in the world, so the camera translation step equals the hand's apparent step
+   in the camera frame. The median ratio scales the whole VO trajectory.
+3. **Contact anchoring.** Each grasp/hold run (≥ ~0.1 s, one-frame flickers
+   merged) pins the wrist to its median position — a hand holding an object
+   cannot drift. Raw `world_fixed` is never mutated; corrected joints go to
+   `world_grounded` (21 joints, rigid per-frame offset, hand shape preserved).
+
+The scorecard then reports `world_drift` (raw) next to `world_drift_grounded`
+(after anchoring). On the bundled sample the release→grasp gap drops from
+~0.58 to ~0.007 (approximate meters; the raw value is up-to-scale, so treat the
+pair as relative improvement). World exports gain `wrist_xyz_grounded_m` and the
+CSV gains `gx, gy, gz` columns. All scale values and anchors land in the
+report's `grounding` block, labeled heuristic.
+
+## TouchTrace quality score
+
+Every hand-frame gets a 0–1 `quality` score answering *"how much should you
+trust this reconstruction?"* — the project's headline honesty layer:
+
+| Component | Weight | What it measures |
+|---|---|---|
+| trust | 0.30 | Mean per-joint confidence |
+| bone | 0.20 | Bone-length stability inside the action segment |
+| identity | 0.15 | MediaPipe raw Left/Right agreeing with the locked identity |
+| world | 0.20 | Visual-odometry validity and feature inliers |
+| plausibility | 0.15 | No impossible action transitions or curl teleports |
+
+The report's `touchtrace` block carries the overall score, an A/B/C/D grade,
+component means, and per-action-segment scores (worst segments are the ones to
+re-film). `quality` flows into the JSONL, world sim JSON/CSV, and the
+workbench header. It is a composite heuristic, not ground-truth accuracy.
 
 ## 3D mesh (WiLoR, cloud GPU)
 

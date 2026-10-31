@@ -292,23 +292,24 @@ def smooth_world_trajectories(
         trajectories[label] = smoothed
 
 
-def putdown_pickup_drift(frames: list[dict], *, max_gap: int = 90) -> dict:
+def putdown_pickup_drift(frames: list[dict], *, max_gap: int = 90, key: str = "world_fixed") -> dict:
     """Drift between a release and the next grasp, in the fixed world frame.
 
     A put-down and a later pick-up of the same object should share a world
     point. The distance between those wrist positions is world-frame drift
-    when no labelled object is available.
+    when no labelled object is available. `key` selects the joint field
+    (world_fixed raw, or world_grounded after contact anchoring).
     """
     gaps = []
     for label in ("Left", "Right"):
         events = []
         for frame in frames:
             for hand in frame["hands"]:
-                if hand["label"] != label or hand.get("world_fixed") is None:
+                if hand["label"] != label or hand.get(key) is None:
                     continue
                 action = hand.get("action")
                 if action in {"release", "grasp"}:
-                    wrist = np.asarray(hand["world_fixed"], dtype=np.float64)[0, :3]
+                    wrist = np.asarray(hand[key], dtype=np.float64)[0, :3]
                     events.append((frame["frame"], action, wrist))
         for index, (frame_index, action, wrist) in enumerate(events):
             if action != "release":

@@ -15,8 +15,10 @@ from src.confidence import attach_confidence
 from src.export_sim import export_sim, export_world_sim, write_world_csv
 from src.factory import factory_metrics
 from src.geometry import enforce_hand_shape
+from src.ground import ground_contacts
 from src.hands import DEFAULT_MODEL, HandRuntime, landmarks_bbox, to_public_hand
 from src.metrics import build_report
+from src.quality import touchtrace
 from src.scorecard import build_scorecard
 from src.smooth import interpolate_gaps, smooth_by_confidence
 from src.visualize import SkeletonPanel, compose, resize_max_side
@@ -43,6 +45,7 @@ def run_video(
     world: bool = True,
     world_smooth_window: int = 11,
     world_zoom: float = 1.25,
+    ground: bool = True,
     high_accuracy: bool = False,
     min_detection_confidence: float = 0.5,
     min_presence_confidence: float = 0.5,
@@ -133,12 +136,13 @@ def run_video(
         attach_camera(processed, width, height)
 
     world_doc = None
+    poses: list[dict] | None = None
+    trajectories: dict[str, list[dict]] | None = None
     if vo is not None:
         poses = vo.trajectory()
         attach_world(processed, poses)
         trajectories = build_world_trajectories(processed)
         smooth_world_trajectories(trajectories, window=world_smooth_window)
-        world_doc = export_world_sim(trajectories, processed, fps=fps, source=input_path.name)
         valid = [bool(p["valid"]) for p in poses]
         inliers = [p["inliers"] for p in poses if p["valid"] and p["inliers"] > 0]
         rotation_only = sum(1 for p in poses if p.get("mode") == "rotation")
@@ -158,9 +162,31 @@ def run_video(
     smooth_by_confidence(processed)
     attach_confidence(processed, fps)
     segments = annotate_actions(processed, fps)
+    grounding = ground_contacts(processed, fps=fps) if (vo is not None and ground) else {"applied": False}
+    quality = touchtrace(processed, segments, poses)
     factory = factory_metrics(processed, segments, fps)
     drift = putdown_pickup_drift(processed)
     scorecard = build_scorecard(processed, drift)
+    if grounding["applied"]:
+        drift_grounded = putdown_pickup_drift(processed, key="world_grounded")
+        scorecard["world_drift_grounded"] = drift_grounded
+        scorecard["notes"]["world_drift_grounded"] = (
+            "Same release-to-grasp gap after contact anchoring and hand-anchored scaling. "
+            "world_drift is in up-to-scale units; grounded values are approximate meters, "
+            "so the pair shows relative improvement rather than identical units."
+        )
+    if trajectories is not None:
+        world_doc = export_world_sim(trajectories, processed, fps=fps, source=input_path.name)
+        if grounding["applied"]:
+            wrists = grounding["wrists"]
+            for frame_entry in world_doc["frames"]:
+                for hand_entry in frame_entry["hands"]:
+                    grounded = wrists.get((frame_entry["frame"], hand_entry["label"]))
+                    if grounded is not None:
+                        hand_entry["wrist_xyz_grounded_m"] = grounded
+            world_doc["coordinate_frame"]["scale"] = (
+                "rotation exact; translation hand-anchored (contact-scaled, approximate meters)"
+            )
 
     with jsonl_path.open("w", encoding="utf-8") as f:
         for frame in processed:
@@ -193,6 +219,19 @@ def run_video(
     report["actions"] = segments
     report["factory"] = factory
     report["scorecard"] = scorecard
+    report["touchtrace"] = quality
+    report["grounding"] = {
+        "applied": grounding["applied"],
+        "hand_scale": grounding.get("hand_scale", {}).get("scale"),
+        "hand_scale_per_label": grounding.get("hand_scale", {}).get("per_label", {}),
+        "vo_scale": grounding.get("vo_scale"),
+        "anchors": grounding.get("anchors", []),
+        "units": "approximate meters (hand-anchored)" if grounding["applied"] else None,
+        "notes": (
+            "Hand bones calibrate size; stationary grasps/holds calibrate trajectory scale and "
+            "anchor the wrist against drift. Heuristic estimates, not ground truth."
+        ),
+    }
     report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     sim_path.write_text(json.dumps(export_sim(processed, fps=fps, source=input_path.name), indent=2), encoding="utf-8")
     if world_doc is not None:
@@ -239,6 +278,10 @@ def _json_frame(frame: dict) -> dict:
             item["reproj_error_px"] = h.get("reproj_error_px")
         if h.get("world_fixed") is not None:
             item["world_fixed"] = _round3(h["world_fixed"])
+        if h.get("world_grounded") is not None:
+            item["world_grounded"] = _round3(h["world_grounded"])
+        if h.get("quality") is not None:
+            item["quality"] = h["quality"]
         hands.append(item)
     out = {"frame": frame["frame"], "t_sec": frame["t_sec"], "hands": hands}
     if frame.get("camera_pose_world") is not None:

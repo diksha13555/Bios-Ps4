@@ -31,6 +31,11 @@ def main(argv=None) -> int:
     p.add_argument("--world-smooth-window", type=int, default=11, help="Savgol window (frames) for world wrist trajectories")
     p.add_argument("--world-zoom", type=float, default=1.25, help="Display-only 3D zoom, clamped to 1.0-2.0")
     p.add_argument(
+        "--no-ground",
+        action="store_true",
+        help="Disable contact anchoring and hand-anchored scale recovery (keeps raw up-to-scale world)",
+    )
+    p.add_argument(
         "--high-accuracy",
         action="store_true",
         help="Use 1920px+ detector input, wider ROI recovery, and recall-oriented thresholds (slower)",
@@ -60,6 +65,7 @@ def main(argv=None) -> int:
         world=not args.no_world,
         world_smooth_window=args.world_smooth_window,
         world_zoom=args.world_zoom,
+        ground=not args.no_ground,
         high_accuracy=args.high_accuracy,
         min_detection_confidence=args.min_detection_confidence,
         min_presence_confidence=args.min_presence_confidence,
@@ -76,6 +82,11 @@ def main(argv=None) -> int:
                 "world_sim": None if paths["world_sim"] is None else str(paths["world_sim"]),
                 "world_csv": None if paths["world_csv"] is None else str(paths["world_csv"]),
                 "world_valid_share": body.get("world", {}).get("valid_share"),
+                "touchtrace": {
+                    "overall": body.get("touchtrace", {}).get("overall"),
+                    "grade": body.get("touchtrace", {}).get("grade"),
+                },
+                "grounding_applied": body.get("grounding", {}).get("applied"),
                 "detection_share": body["detection_share"],
                 "accuracy": body["accuracy"],
                 "fps_end_to_end": body["fps_end_to_end"],

@@ -4,14 +4,21 @@ from pathlib import Path
 import numpy as np
 
 from src.workbench_data import (
+    action_codes,
     clip_paths,
     detection_codes,
     discover_clips,
+    discover_runs,
     hand_rows,
     max_frames_for_seconds,
     mesh_surfaces,
+    present_coordinates,
+    present_paths,
+    quality_codes,
+    quality_grade,
     safe_stem,
     save_upload,
+    summarize_hands,
 )
 
 
@@ -76,6 +83,61 @@ def test_mesh_in_a_result_folder_is_visible(tmp_path: Path):
         {"vertices": np.zeros((1, 4, 3)), "frame_ids": np.array([3]), "labels": np.array([1]), "faces": np.zeros((1, 3))},
         1,
     ) == []
+
+
+def test_same_take_borrows_the_scorecard_and_the_mesh(tmp_path: Path):
+    trust = tmp_path / "trust50"
+    mesh = tmp_path / "mesh50"
+    trust.mkdir()
+    mesh.mkdir()
+    (trust / "clip_report.json").write_text('{"scorecard": {"bone_length_cv": 0.1}}', encoding="utf-8")
+    (trust / "clip_sidebyside.mp4").write_bytes(b"v")
+    (trust / "clip.jsonl").write_text(
+        '{"hands":[{"label":"Left","action":"grasp","grasp":"power","inferred":true,"joint_confidence":[0.2,0.4]}]}\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "clip_report.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "clip_sidebyside.mp4").write_bytes(b"old")
+    np.savez(mesh / "clip-50s_mesh.npz", vertices=np.zeros((1, 4, 3), np.float32))
+    (tmp_path / "smoke_report.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "trust_smoke").mkdir()
+    (tmp_path / "trust_smoke" / "clip_report.json").write_text("{}", encoding="utf-8")
+
+    runs = discover_runs(tmp_path)
+    assert [item["id"] for item in runs][0] == "trust50/clip"
+    assert all("smoke" not in item["id"] for item in runs)
+    borrowed = present_paths(tmp_path, mesh, "clip-50s")
+    assert borrowed["mesh_npz"].parent == mesh
+    assert borrowed["report"].parent == trust
+    assert borrowed["video"].parent == trust
+    summary = summarize_hands(
+        [{"hands": [{"action": "grasp", "grasp": "power", "inferred": True, "joint_confidence": [0.2, 0.4]}]}]
+    )
+    assert summary["actions"] == {"grasp": 1}
+    assert summary["inferred"] == 1
+    assert summary["mean_trust"] == 0.3
+    assert action_codes([{"hands": [{"action": "hold"}]}, {"hands": []}]) == [4, 0]
+
+
+def test_quality_and_grounded_coordinates():
+    frame = {
+        "hands": [
+            {
+                "label": "Left",
+                "quality": 0.72,
+                "quality_parts": {"trust": 0.8, "bone": 0.7, "identity": 1.0, "world": 0.5, "plausibility": 1.0},
+                "world_grounded": [[0, 0, 0]] * 21,
+                "world": [[0, 0, 0]] * 21,
+            }
+        ]
+    }
+    assert present_coordinates(frame, mesh=False) == ["world_grounded", "world", "image"]
+    assert quality_grade(0.72) == "B"
+    assert quality_codes([frame, {"hands": []}]) == [3, 0]
+    row = hand_rows(frame, "world_grounded")[0]
+    assert row["quality"] == 0.72
+    assert row["quality_grade"] == "B"
+    assert row["grounded"] is True
 
 
 def test_upload_name_and_duration(tmp_path: Path):

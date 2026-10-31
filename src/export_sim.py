@@ -104,6 +104,7 @@ def export_world_sim(trajectories: dict[str, list[dict]], frames: list[dict], *,
                     "action": None if source_hand is None else source_hand.get("action"),
                     "grasp": None if source_hand is None else source_hand.get("grasp"),
                     "inferred": False if source_hand is None else bool(source_hand.get("inferred", False)),
+                    "quality": None if source_hand is None else source_hand.get("quality"),
                 }
             )
         t_sec = next(iter(entry.values()))["t_sec"]
@@ -124,9 +125,9 @@ def export_world_sim(trajectories: dict[str, list[dict]], frames: list[dict], *,
 def write_world_csv(path: Path, world_sim: dict) -> None:
     """Flat per-frame/per-hand CSV: one wrist pose + curl set per row."""
     columns = [
-        "frame", "t_sec", "label", "x", "y", "z", "qx", "qy", "qz", "qw",
+        "frame", "t_sec", "label", "x", "y", "z", "gx", "gy", "gz", "qx", "qy", "qz", "qw",
         "curl_index", "curl_middle", "curl_ring", "curl_pinky", "curl_thumb",
-        "tracked", "interpolated", "inferred", "action", "grasp", "mean_joint_confidence",
+        "tracked", "interpolated", "inferred", "action", "grasp", "mean_joint_confidence", "quality",
     ]
     with path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=columns)
@@ -135,6 +136,7 @@ def write_world_csv(path: Path, world_sim: dict) -> None:
             for hand in frame["hands"]:
                 quat = hand["wrist_quat_xyzw"] or [None] * 4
                 curls = hand["finger_curls_rad"] or {}
+                grounded = hand.get("wrist_xyz_grounded_m") or [None] * 3
                 writer.writerow(
                     {
                         "frame": frame["frame"],
@@ -143,6 +145,7 @@ def write_world_csv(path: Path, world_sim: dict) -> None:
                         "x": hand["wrist_xyz"][0],
                         "y": hand["wrist_xyz"][1],
                         "z": hand["wrist_xyz"][2],
+                        "gx": grounded[0], "gy": grounded[1], "gz": grounded[2],
                         "qx": quat[0], "qy": quat[1], "qz": quat[2], "qw": quat[3],
                         "curl_index": curls.get("index"),
                         "curl_middle": curls.get("middle"),
@@ -157,5 +160,6 @@ def write_world_csv(path: Path, world_sim: dict) -> None:
                         "mean_joint_confidence": None
                         if not hand.get("joint_confidence")
                         else round(float(np.mean(hand["joint_confidence"])), 4),
+                        "quality": hand.get("quality"),
                     }
                 )
