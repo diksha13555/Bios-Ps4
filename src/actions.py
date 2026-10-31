@@ -37,7 +37,7 @@ def _position(hand: dict) -> np.ndarray:
 
 
 def annotate_actions(frames: list[dict], fps: float) -> list[dict]:
-    dt = 1.0 / max(float(fps), 1e-6)
+    default_dt = 1.0 / max(float(fps), 1e-6)
     labels = {hand["label"] for frame in frames for hand in frame["hands"]}
     segments: list[dict] = []
     for label in sorted(labels):
@@ -47,32 +47,50 @@ def annotate_actions(frames: list[dict], fps: float) -> list[dict]:
                 if hand["label"] == label:
                     series.append((frame, hand))
         previous_curl = None
+        previous_frame_num = None
+        previous_t = None
         states = []
         for frame, hand in series:
             points = np.asarray(hand.get("world") , dtype=np.float64)
             curls = finger_curls(points) if points.shape[0] >= 21 else {}
             mean_curl = float(np.mean(list(curls.values()))) if curls else 0.0
-            curl_delta = 0.0 if previous_curl is None else (mean_curl - previous_curl) / dt
-            previous_curl = mean_curl
+            dt = default_dt
+            gap_break = False
+            if previous_t is not None:
+                dt = frame["t_sec"] - previous_t
+                if dt <= 1e-6:
+                    dt = default_dt
+                gap_break = frame["frame"] - previous_frame_num > 1
             speed = 0.0
             if states:
                 prev_hand = series[len(states) - 1][1]
                 speed = float(np.linalg.norm(_position(hand) - _position(prev_hand)) / dt)
-            if curl_delta > 1.5 and mean_curl > 0.5:
-                state = "grasp"
-            elif curl_delta < -1.5 and mean_curl > 0.35:
-                state = "release"
-            elif mean_curl >= 1.1 and speed < 0.04:
-                state = "hold"
-            elif speed >= 0.04 and mean_curl < 1.0:
-                state = "reach"
+            if hand.get("inferred") or gap_break:
+                # Filled or reappearing hands carry the prior state; grasp/release
+                # events only fire on continuously tracked, real measurements.
+                state = states[-1] if states else "idle"
+                curl_delta = 0.0
+                previous_curl = None
             else:
-                state = "idle"
+                curl_delta = 0.0 if previous_curl is None else (mean_curl - previous_curl) / dt
+                previous_curl = mean_curl
+                if curl_delta > 1.5 and mean_curl > 0.5:
+                    state = "grasp"
+                elif curl_delta < -1.5 and mean_curl > 0.35:
+                    state = "release"
+                elif mean_curl >= 1.1 and speed < 0.04:
+                    state = "hold"
+                elif speed >= 0.04 and mean_curl < 1.0:
+                    state = "reach"
+                else:
+                    state = "idle"
             grasp = _grasp_name(curls) if state in {"grasp", "hold"} else None
             hand["action"] = state
             hand["grasp"] = grasp
             hand["mean_curl"] = round(mean_curl, 4)
             states.append(state)
+            previous_frame_num = frame["frame"]
+            previous_t = frame["t_sec"]
         if not series:
             continue
         start = 0

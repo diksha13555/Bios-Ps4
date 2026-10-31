@@ -217,8 +217,23 @@ Label only frames you have manually annotated. Omit all other frames (they are e
 - `label`: `"Left"` or `"Right"` (annotator’s subject handedness).
 - `image`: 21 landmarks in the same normalized space as pipeline output (z optional).
 - Empty `hands`: negative example (no hand visible).
+- Partial labels: fewer points plus `indices` (e.g. wrist + five fingertips with
+  `[0, 4, 8, 12, 16, 20]`) — PCK is then computed on those joints only.
 
-Do not generate labels from model output.
+Do not generate labels from model output. The annotation tool records human
+clicks only:
+
+```bash
+.venv/bin/python scripts/annotate_hands.py \
+  --video data/raw/your_clip.mp4 \
+  --output data/labels/your_clip.jsonl \
+  --stride 5 --max-frames 250 --points 6
+```
+
+`--points 21` clicks the full landmark set; `--points 6` is the fast wrist +
+fingertips mode. Keys: click to place, `L`/`R` handedness, `Enter` save hand,
+`N` next frame, `U` undo, `S` no-hand frame, `Q` quit. Progress saves on every
+hand, so a session can be stopped and resumed.
 
 ## Accuracy evaluation
 
@@ -244,6 +259,34 @@ python scripts/evaluate_hands.py `
 If no annotation file exists, the evaluator exits with a clear message and does not report fabricated accuracy.
 
 The `_report.json` **`accuracy`** block is operational (confidence, coverage, pitch text), not ground-truth landmark accuracy.
+
+## Composite detection benchmark
+
+`scripts/benchmark_composite.py` pastes a real hand crop (from a confidently
+detected single-hand frame) onto a synthetic cluttered background along a
+scripted trajectory with scale changes and negative frames. Wrist positions and
+bounding boxes are exact ground truth from the compositing transform — never
+model output. Run it:
+
+```bash
+.venv/bin/python scripts/benchmark_composite.py
+```
+
+Latest result (240 frames, `clahe=False` because local equalization destroys
+the composite's local contrast):
+
+| Metric | Value |
+| --- | --- |
+| Detection precision | **96.0%** |
+| Detection recall | **97.0%** |
+| Handedness accuracy (matched pairs) | **100%** |
+| Identity switches | **0** |
+| Wrist localization error | 0.046 normalized (~29 px at 640 px) |
+| Hallucinations in negative frames | **0** |
+
+Scope: detection, wrist localization, and identity stability. Landmark PCK
+requires manual annotation (above); the composite does not fake 21-point labels.
+Reports land in `outputs/benchmark/composite_eval.json`.
 
 ## Pipeline
 
@@ -422,4 +465,4 @@ HaMeR is the heavier alternate (separate detector, own install). This runner use
 
 ## Test results (last run)
 
-Run `pytest -q` after `pip install -r requirements.txt`. The merged tree includes world/mesh tests plus identity and ground-truth evaluation tests (synthetic fixtures only).
+Run `pytest -q` after `pip install -r requirements-dev.txt`. The merged tree includes world/mesh tests plus identity and ground-truth evaluation tests (synthetic fixtures only).

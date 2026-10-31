@@ -56,23 +56,38 @@ def _smoothness(samples: list[tuple[float, np.ndarray]]) -> float | None:
     return float(1.0 / (1.0 + normalized))
 
 
-def factory_metrics(frames: list[dict], segments: list[dict], fps: float) -> dict:
+def _trusted(hand: dict, min_trust: float) -> bool:
+    """Exclude inferred/low-confidence frames from factory statistics."""
+    if hand.get("inferred"):
+        return False
+    confidence = hand.get("joint_confidence") or []
+    if not confidence:
+        return True
+    return float(np.mean(confidence)) >= min_trust
+
+
+def factory_metrics(frames: list[dict], segments: list[dict], fps: float, *, min_trust: float = 0.35) -> dict:
     active = {"Left": 0, "Right": 0}
     risky = {"Left": 0, "Right": 0}
     scored = {"Left": 0, "Right": 0}
     paths: dict[str, list[tuple[float, np.ndarray]]] = {"Left": [], "Right": []}
+    total_hands = 0
+    excluded_hands = 0
     for frame in frames:
         for hand in frame["hands"]:
             label = hand["label"]
             if label not in active:
                 continue
+            total_hands += 1
+            flexion, deviation = _wrist_angles(hand)
+            hand["rula_wrist"] = _rula_wrist(flexion, deviation)
+            if not _trusted(hand, min_trust):
+                excluded_hands += 1
+                continue
             if hand.get("action") != "idle":
                 active[label] += 1
-            flexion, deviation = _wrist_angles(hand)
-            score = _rula_wrist(flexion, deviation)
-            hand["rula_wrist"] = score
             scored[label] += 1
-            if score >= 3:
+            if hand["rula_wrist"] >= 3:
                 risky[label] += 1
             points = np.asarray(hand.get("world_fixed") or hand["world"], dtype=np.float64)
             paths[label].append((float(frame["t_sec"]), points[0, :3]))
@@ -101,5 +116,11 @@ def factory_metrics(frames: list[dict], segments: list[dict], fps: float) -> dic
             for label in ("Left", "Right")
         },
         "fps": fps,
+        "trusted_filter": {
+            "min_mean_joint_confidence": min_trust,
+            "excluded_hands": excluded_hands,
+            "excluded_share": None if total_hands == 0 else round(excluded_hands / total_hands, 4),
+            "note": "Active share, RULA wrist share, and smoothness use trusted (non-inferred) frames only.",
+        },
         "rula": "Wrist row only: 1 neutral, 2 within 15 deg, 3 beyond 15 deg, +1 if deviation exceeds 15 deg.",
     }

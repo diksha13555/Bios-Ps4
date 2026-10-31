@@ -297,7 +297,7 @@ $('#m1').innerHTML=Array.from({length:10},(_,i)=>`<i style="animation-delay:${i*
 function loop(t){if(playing){if(!last)last=t;acc+=(t-last)/1000*FPS*(demo?.8:1);last=t;if(acc>=1){const k=Math.floor(acc);acc-=k;f+=k;if(f>=N){f=demo?N-1:0;if(demo){setPlay(false);demo=false}}draw()}}requestAnimationFrame(loop)}
 requestAnimationFrame(loop);renderLists();draw();
 (function(){
-  var workbench=new URLSearchParams(location.search).get('workbench')||'https://touchtrace-workbench.streamlit.app';
+  var workbench=new URLSearchParams(location.search).get('workbench')||'/workbench.html';
   var open=document.getElementById('openWorkbench');
   if(open){open.href=workbench;open.target='_blank';open.rel='noopener noreferrer'}
 })();

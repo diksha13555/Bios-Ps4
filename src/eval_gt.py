@@ -42,6 +42,28 @@ def _landmark_xy(hand: dict) -> np.ndarray | None:
     return arr[:, :2]
 
 
+def _paired_landmarks(pred: dict, gt: dict) -> tuple[np.ndarray, np.ndarray] | None:
+    """Align prediction and GT landmarks, supporting partial (indexed) GT.
+
+    Full 21-point GT needs no `indices`. Partial GT (e.g. wrist + five
+    fingertips from the 6-point annotation mode) supplies `indices` naming
+    which MediaPipe joints the points correspond to.
+    """
+    pg = _landmark_xy(pred)
+    image = gt.get("image") or []
+    if pg is None or not image:
+        return None
+    gg = np.asarray(image, dtype=np.float64).reshape(-1, 3)[:, :2]
+    indices = gt.get("indices")
+    if indices is None:
+        if len(gg) != 21:
+            return None
+        indices = list(range(21))
+    if len(indices) != len(gg) or any(int(i) >= len(pg) for i in indices):
+        return None
+    return pg[np.asarray(indices, dtype=int)], gg
+
+
 def match_hands_spatial(
     predictions: list[dict],
     ground_truth: list[dict],
@@ -86,18 +108,18 @@ def match_hands_spatial(
 
 
 def _mean_landmark_error(pred: dict, gt: dict) -> float | None:
-    pg = _landmark_xy(pred)
-    gg = _landmark_xy(gt)
-    if pg is None or gg is None:
+    paired = _paired_landmarks(pred, gt)
+    if paired is None:
         return None
+    pg, gg = paired
     return float(np.linalg.norm(pg - gg, axis=1).mean())
 
 
 def _pck(pred: dict, gt: dict, threshold: float) -> float | None:
-    pg = _landmark_xy(pred)
-    gg = _landmark_xy(gt)
-    if pg is None or gg is None:
+    paired = _paired_landmarks(pred, gt)
+    if paired is None:
         return None
+    pg, gg = paired
     dists = np.linalg.norm(pg - gg, axis=1)
     return float(np.mean(dists <= threshold))
 

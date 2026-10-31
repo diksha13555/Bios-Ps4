@@ -92,6 +92,7 @@ def discover_runs(output_dir: Path) -> list[dict]:
             body = report.read_text(encoding="utf-8") if report.is_file() else ""
             has_scorecard = '"scorecard"' in body or '"touchtrace"' in body
             has_video = (folder / f"{stem}_sidebyside.mp4").is_file()
+            mesh = (folder / f"{stem}_mesh.npz").is_file() or related_file(output_dir, stem, "_mesh.npz") is not None
             runs.append(
                 {
                     "id": run_id,
@@ -99,9 +100,17 @@ def discover_runs(output_dir: Path) -> list[dict]:
                     "folder": folder,
                     "scorecard": has_scorecard,
                     "video": has_video,
+                    "mesh": mesh,
                 }
             )
-    runs.sort(key=lambda run: (0 if run["scorecard"] else 1, 0 if run["video"] else 1, run["id"]))
+    runs.sort(
+        key=lambda run: (
+            0 if run["mesh"] else 1,
+            0 if run["scorecard"] else 1,
+            0 if run["video"] else 1,
+            run["id"],
+        )
+    )
     return runs
 
 
@@ -272,6 +281,14 @@ def mesh_surfaces(bundle: dict, frame_id: int) -> list[dict]:
 
 def load_report(path: Path | None) -> dict | None:
     if path is None or not path.is_file():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_composite_eval(output_dir: Path) -> dict | None:
+    """Composite detection benchmark from scripts/benchmark_composite.py."""
+    path = output_dir / "benchmark" / "composite_eval.json"
+    if not path.is_file():
         return None
     return json.loads(path.read_text(encoding="utf-8"))
 

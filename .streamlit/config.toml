@@ -9,3 +9,5 @@ textColor = "#f5f5f7"
 headless = true
 fileWatcherType = "none"
 maxUploadSize = 500
+enableCORS = false
+enableXsrfProtection = false

@@ -29,6 +29,7 @@ from src.workbench_data import (
     discover_runs,
     hand_points,
     hand_rows,
+    load_composite_eval,
     load_jsonl,
     load_report,
     max_frames_for_seconds,
@@ -101,7 +102,17 @@ def _skeleton_figure(frame: dict | None, coord: str, surfaces: list[dict] | None
         clouds.append(verts)
     for hand in (frame or {}).get("hands", []):
         if coord == "mesh":
-            break
+            points = hand_points(hand, "world")
+            if points is None:
+                continue
+            color = LEFT_COLOR if hand.get("label") == "Left" else RIGHT_COLOR
+            xs, ys, zs = points[:, 0], points[:, 1], points[:, 2] if points.shape[1] > 2 else np.zeros(len(points))
+            clouds.append(points[:, :3])
+            for a, b in CONNECTIONS:
+                if a < len(points) and b < len(points):
+                    ax.plot([xs[a], xs[b]], [ys[a], ys[b]], [zs[a], zs[b]], color=color, linewidth=1.0, alpha=0.45)
+            ax.scatter(xs, ys, zs, color=color, s=12, alpha=0.55)
+            continue
         points = hand_points(hand, "image" if coord == "image" else coord)
         if points is None:
             continue
@@ -266,6 +277,17 @@ def _merged_wilor_gap(path: str) -> dict:
     return build_scorecard(load_jsonl(Path(path)), {})["mediapipe_wilor"]
 
 
+def _wilor_labels(wilor: dict) -> tuple[str, str | None]:
+    aligned = wilor.get("mean_joint_m")
+    if aligned is None:
+        return "—", None
+    label = f"{float(aligned) * 1000:.0f} mm aligned"
+    raw = wilor.get("mean_joint_raw_m")
+    if raw is not None:
+        return label, f"Raw pre-alignment {float(raw) * 1000:.0f} mm · Umeyama scale {_num(wilor.get('mean_scale'), 3)}"
+    return f"{float(aligned) * 1000:.0f} mm", None
+
+
 def _spec_strip(report: dict | None, summary: dict, wilor: dict) -> None:
     report = report or {}
     share = report.get("detection_share") or {}
@@ -273,9 +295,9 @@ def _spec_strip(report: dict | None, summary: dict, wilor: dict) -> None:
     factory = report.get("factory") or {}
     scorecard = report.get("scorecard") or {}
     balance = factory.get("hand_balance") or {}
-    gap = wilor.get("mean_joint_m")
-    if gap is None:
-        gap = (scorecard.get("mediapipe_wilor") or {}).get("mean_joint_m")
+    if not wilor.get("frames"):
+        wilor = (scorecard.get("mediapipe_wilor") or {}) | wilor
+    wilor_text, wilor_note = _wilor_labels(wilor)
     swaps = scorecard.get("identity_disagreements")
     touch = report.get("touchtrace") or {}
     grounding = report.get("grounding") or {}
@@ -293,7 +315,7 @@ def _spec_strip(report: dict | None, summary: dict, wilor: dict) -> None:
         ("Joint trust", _num(summary.get("mean_trust"), 2)),
         ("Bone-length CV", _num(scorecard.get("bone_length_cv"), 3)),
         ("Identity lock", "—" if swaps is None else str(int(swaps))),
-        ("WiLoR agreement", "—" if gap is None else f"{float(gap) * 1000:.0f} mm"),
+        ("WiLoR agreement", wilor_text),
         ("Left active", _pct(balance.get("left_active_share"))),
         ("Right active", _pct(balance.get("right_active_share"))),
         ("Risky wrist", _pct((factory.get("risky_wrist_share") or {}).get("Left"))),
@@ -321,6 +343,30 @@ def _spec_strip(report: dict | None, summary: dict, wilor: dict) -> None:
             f"Mean TouchTrace from timeline: {_num(summary['mean_quality'], 2)} "
             f"({quality_grade(summary['mean_quality']) or '—'}). Re-run analysis to refresh the report block."
         )
+    if wilor_note:
+        st.caption(wilor_note + ". Fair mesh-vs-MediaPipe compare after rigid alignment.")
+
+
+def _composite_benchmark_panel(output_dir: Path) -> None:
+    evaluation = load_composite_eval(output_dir)
+    if not evaluation:
+        return
+    bench = evaluation.get("benchmark") or {}
+    detection = evaluation.get("detection") or {}
+    _section("Composite detection benchmark", "Real hand on synthetic clutter")
+    cols = st.columns(4)
+    cols[0].metric("Precision", _pct(detection.get("precision")))
+    cols[1].metric("Recall", _pct(detection.get("recall")))
+    cols[2].metric("Handedness", _pct((evaluation.get("handedness") or {}).get("accuracy")))
+    cols[3].metric("Identity switches", evaluation.get("tracking", {}).get("identity_label_switches", "—"))
+    wrist = evaluation.get("wrist_localization") or {}
+    if wrist.get("mean_error_norm") is not None:
+        st.caption(
+            f"Wrist localization {_num(wrist.get('mean_error_norm'), 3)} normalized "
+            f"({bench.get('type', 'composite')}). Labels are exact from compositing, not model output."
+        )
+    if bench.get("note"):
+        st.caption(bench["note"])
 
 
 def _hero_badge(report: dict | None, summary: dict | None) -> str:
@@ -428,9 +474,9 @@ def _pitch(report: dict | None, summary: dict, wilor: dict) -> None:
     drift = (scorecard.get("world_drift") or {}).get("mean_m")
     bone = scorecard.get("bone_length_cv")
     swaps = scorecard.get("identity_disagreements")
-    gap = wilor.get("mean_joint_m")
-    if gap is None:
-        gap = (scorecard.get("mediapipe_wilor") or {}).get("mean_joint_m")
+    if not wilor.get("frames"):
+        wilor = (scorecard.get("mediapipe_wilor") or {}) | wilor
+    wilor_text, wilor_note = _wilor_labels(wilor)
 
     tracking = st.columns(4)
     tracking[0].metric("Either hand", _pct(share.get("either")))
@@ -441,8 +487,14 @@ def _pitch(report: dict | None, summary: dict, wilor: dict) -> None:
     trust = st.columns(4)
     trust[0].metric("Bone-length CV", _num(bone, 3))
     trust[1].metric("Identity corrections", "—" if swaps is None else str(int(swaps)))
-    trust[2].metric("WiLoR agreement", "—" if gap is None else f"{float(gap) * 1000:.0f} mm")
+    aligned_mm = wilor.get("mean_joint_m")
+    trust[2].metric(
+        "WiLoR aligned",
+        "—" if aligned_mm is None else f"{float(aligned_mm) * 1000:.0f} mm",
+    )
     trust[3].metric("Mean joint trust", _num(summary.get("mean_trust"), 2))
+    if wilor_note:
+        st.caption(wilor_note)
 
     factory_row = st.columns(4)
     factory_row[0].metric("Left of active time", _pct(balance.get("left_active_share")))
@@ -453,6 +505,14 @@ def _pitch(report: dict | None, summary: dict, wilor: dict) -> None:
         "—" if left_risk is None and right_risk is None else f"{_pct(left_risk)} / {_pct(right_risk)}",
     )
     factory_row[3].metric("Cycles", "—" if "cycle_count" not in factory else str(int(factory.get("cycle_count") or 0)))
+    trusted = factory.get("trusted_filter") or {}
+    if trusted:
+        st.caption(
+            f"Factory stats exclude inferred/low-trust frames "
+            f"({trusted.get('excluded_hands', 0)} hands, "
+            f"{_pct(trusted.get('excluded_share'))} of hand-frames). "
+            f"{trusted.get('note', '')}"
+        )
 
     if accuracy.get("pitch_lead"):
         st.caption(accuracy["pitch_lead"])
@@ -490,9 +550,11 @@ def _pitch(report: dict | None, summary: dict, wilor: dict) -> None:
 
 **Trust.** Each joint is 0–1 from the detection score, reprojection error, jitter, and disagreement with WiLoR. Low-trust joints are smoothed harder and pulled back onto a stable bone length. That is the blur and glove cleanup.
 
-**Actions.** Idle, reach, grasp, hold, release. A grasp or hold also gets a coarse name: power, precision, lateral, or other.
+**Actions.** Idle, reach, grasp, hold, release. Grasp/release only fire on continuously tracked frames — not after gaps or on inferred fill.
 
-**Factory.** Cycle time is reach, then grasp, then hold, then release. Hand balance is the share of active frames. The wrist number is one RULA row.
+**Factory.** Cycle time is reach, then grasp, then hold, then release. Active share, risky wrist, and smoothness use trusted (non-inferred) frames only. The wrist number is one RULA row.
+
+**WiLoR agreement.** Procrustes-aligned joint error (raw pre-alignment error shown separately when available).
 
 **Coordinates.** Image is the video. World is the hand shape in meters. Camera is that hand in front of the lens. Fixed world is the path through the clip. Grounded world is the contact-anchored path in approximate meters.
 
@@ -530,6 +592,17 @@ def _show_figure(fig) -> None:
         plt.close(fig)
 
 
+def _sync_coordinate_choice(run_id: str, present: list[str], *, has_mesh: bool) -> None:
+    """Prefer WiLoR mesh when available; reset when the processed run changes."""
+    coord_key = f"coordinates-{run_id}"
+    if st.session_state.get("inspect_run_id") != run_id:
+        st.session_state["inspect_run_id"] = run_id
+        if has_mesh and "mesh" in present:
+            st.session_state[coord_key] = "mesh"
+    if st.session_state.get(coord_key) not in present:
+        st.session_state[coord_key] = present[0]
+
+
 def _inspect(paths: dict, rows: list[dict], run_id: str, report: dict | None = None) -> None:
     _section("The MotionTruth studio", "21 landmarks")
     if not rows:
@@ -543,11 +616,13 @@ def _inspect(paths: dict, rows: list[dict], run_id: str, report: dict | None = N
     frame = rows[index]
     frame_id = int(frame.get("frame", index))
     st.caption(f"Frame {frame_id} · {_num(frame.get('t_sec'), 3)} s · {len(frame.get('hands', []))} hand(s)")
-    present = present_coordinates(frame, mesh=paths.get("mesh_npz") is not None)
+    has_mesh = paths.get("mesh_npz") is not None
+    present = present_coordinates(frame, mesh=has_mesh)
+    _sync_coordinate_choice(run_id, present, has_mesh=has_mesh)
     coord_key = f"coordinates-{run_id}"
-    if st.session_state.get(coord_key) not in present:
-        st.session_state[coord_key] = present[0]
     coord = st.radio("Coordinate space", present, horizontal=True, key=coord_key)
+    if has_mesh and coord != "mesh":
+        st.caption("WiLoR mesh is available for this take — select **mesh** to view the MANO surface.")
     st.caption(COORD_HELP.get(coord, ""))
     surfaces = []
     if coord == "mesh":
@@ -569,30 +644,38 @@ def _inspect(paths: dict, rows: list[dict], run_id: str, report: dict | None = N
         if paths.get("video") is not None:
             image = _read_video_frame(str(paths["video"]), frame_id)
             if image is not None:
-                st.image(image, caption="Recorded overlay at the selected frame", use_container_width=True)
+                st.image(image, caption="Side-by-side video at this frame", use_container_width=True)
             else:
                 st.caption("The preview frame could not be decoded.")
         else:
             st.caption("No video preview is available for this run.")
+        if has_mesh:
+            mesh_here = bool(surfaces) if coord == "mesh" else None
+            if coord == "mesh":
+                st.caption(
+                    "MANO mesh at this frame."
+                    if mesh_here
+                    else "No mesh vertices at this frame — scrub to a frame with hands tracked in the WiLoR pass."
+                )
         for hand in frame.get("hands", []):
-            q = hand.get("quality")
-            q_text = ""
-            if q is not None:
-                q_text = f" · TouchTrace {q:.2f} ({quality_grade(q) or '—'})"
-            st.text(
-                f"{hand.get('label', 'Hand')} · {hand.get('action') or 'Unlabelled'}"
-                + (f" · {hand['grasp']}" if hand.get("grasp") else "")
-                + (" · Inferred" if hand.get("inferred") else "")
-                + (" · Grounded" if hand.get("world_grounded") else "")
-                + q_text
-            )
+            bits = [
+                hand.get("label", "Hand"),
+                hand.get("action") or "Unlabelled",
+            ]
+            if hand.get("grasp"):
+                bits.append(hand["grasp"])
+            if hand.get("inferred"):
+                bits.append("inferred · actions frozen")
+            if hand.get("quality") is not None:
+                bits.append(f"TouchTrace {hand['quality']:.2f}")
+            st.text(" · ".join(bits))
         if not frame.get("hands"):
             st.caption("No hand measurements at this frame.")
         _show_figure(_trust_figure(frame.get("hands", [])))
-        st.caption("Per-joint trust (top). Inferred joints are capped at 0.35.")
+        st.caption("Joint trust is a heuristic, not measured accuracy. Inferred joints are capped at 0.35.")
         if any(h.get("quality_parts") for h in frame.get("hands", [])):
-            _show_figure(_quality_parts_figure(frame.get("hands", [])))
-            st.caption("TouchTrace components for this frame.")
+            with st.expander("TouchTrace on this frame", expanded=False):
+                _show_figure(_quality_parts_figure(frame.get("hands", [])))
     with st.expander("Detection and action timelines", expanded=False):
         _show_figure(_timeline_figure(detection_codes(rows), index))
         st.caption("Hands: teal left · amber right · green both · gray none. White marks the selected frame.")
@@ -774,11 +857,23 @@ def main() -> None:
         selected = st.selectbox("Processed run", ids, index=ids.index(run["id"]))
         st.session_state.run = selected
         if selected != run["id"]:
+            st.session_state.pop("inspect_run_id", None)
+            for key in list(st.session_state):
+                if key.startswith("coordinates-"):
+                    del st.session_state[key]
             st.rerun()
     if run is None:
         st.markdown('<div class="tt-empty"><h2>Your first take starts here.</h2>'
                     '<p>Open studio, choose a video, and run analysis.</p></div>', unsafe_allow_html=True)
         return
+    mesh_runs = [item for item in runs if item.get("mesh")]
+    if paths.get("mesh_npz") is None:
+        hint = (
+            f"WiLoR mesh is on **{mesh_runs[0]['id']}**. Pick that run and set Coordinate space to **mesh**."
+            if mesh_runs
+            else "No WiLoR `.npz` in `outputs/`. Run `scripts/run_mesh.py` on this clip, then refresh."
+        )
+        st.warning(hint)
     wilor = (report or {}).get("scorecard", {}).get("mediapipe_wilor") or {}
     if not wilor.get("frames") and paths.get("merged") is not None:
         try:
@@ -809,6 +904,7 @@ def main() -> None:
         with quality:
             _touchtrace_panel(report, rows)
             _grounding_panel(report)
+            _composite_benchmark_panel(OUTPUT_DIR)
             st.divider()
             _section("Operational diagnostics", "Tracking and factory")
             st.caption("These indicators describe model output, not ground-truth accuracy. Missing measurements are shown as —.")
