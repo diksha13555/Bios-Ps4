@@ -28,10 +28,10 @@ python scripts/run_ps4.py --input data/raw/your_clip.mp4
 | --- | --- |
 | `<name>_sidebyside.mp4` | Source + 2D skeleton beside 3D hand plot |
 | `<name>.jsonl` | Per-frame landmarks (image, world, optional camera) |
-| `<name>_report.json` | Detection share, FPS, dropouts, jitter |
+| `<name>_report.json` | Detection share, **`accuracy`** block (confidence, coverage, pitch_lead), FPS |
 | `<name>_sim.json` | Wrist 6-DoF and finger curl angles for sim |
 
-Useful flags: `--max-frames 300`, `--no-clahe`, `--viz-max-side 960`, `--no-camera-pose`, `--max-gap 5`.
+Useful flags: `--max-frames 300`, `--no-clahe`, `--viz-max-side 960`, `--no-camera-pose`, `--max-gap 5`, `--min-detection-confidence 0.4` (recall vs precision).
 
 ## Pipeline
 
