@@ -162,6 +162,17 @@ def load_wilor(device: str | None = None, fp16: bool = True):
     """Load WiLoR-mini. Weights download from Hugging Face on first use."""
     try:
         import torch
+
+        # PyTorch 2.6 defaults torch.load to weights_only=True. The WiLoR
+        # detector checkpoint (official warmshao/WiLoR-mini weights) needs the
+        # previous behavior, which ultralytics 8.1.34 still calls.
+        _torch_load = torch.load
+
+        def _load_checkpoint(*args, **kwargs):
+            kwargs.setdefault("weights_only", False)
+            return _torch_load(*args, **kwargs)
+
+        torch.load = _load_checkpoint
         from wilor_mini.pipelines.wilor_hand_pose3d_estimation_pipeline import (
             WiLorHandPose3dEstimationPipeline,
         )
