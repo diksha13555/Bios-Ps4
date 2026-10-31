@@ -35,30 +35,78 @@ The primary scored timeline is MediaPipe. WiLoR adds higher-fidelity MANO geomet
 
 Hackathon use only. Do not publish clips, frames, or screenshots. Do not commit video. `data/raw/` and `outputs/` are gitignored.
 
-## Installation (Windows)
+## Get the project running
 
-```powershell
-cd C:\Users\Loq\OneDrive\Desktop\Bios-Ps4
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
-
-Download the MediaPipe model (Git Bash or WSL):
+Clone the repo, create a virtual environment, install dependencies, download the MediaPipe model, then run a clip. Video stays in `data/raw/` and is never committed.
 
 ```bash
-bash scripts/download_models.sh
+git clone https://github.com/diksha13555/Bios-Ps4.git
+cd Bios-Ps4
 ```
 
-Or download manually to `models/hand_landmarker.task` from the URL in `scripts/download_models.sh`.
+Put one MP4 at `data/raw/your_clip.mp4`.
 
-Run tests:
+### macOS or Linux
+
+Python 3.11 is what this repo was developed with. Python 3.10 also works.
+
+```bash
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+bash scripts/download_models.sh
+python -m pytest -q
+python scripts/run_ps4.py --input data/raw/your_clip.mp4
+streamlit run app/workbench.py
+```
+
+The workbench opens at http://localhost:8501. It lists clips under `outputs/`, plays the side-by-side video, and scrubs the per-frame timeline. Demo mode hides the inspector.
+
+### Windows (including an NVIDIA laptop)
+
+Use Python 3.10 so the optional WiLoR install matches the version it was tested with. Install Python from python.org with “Add python.exe to PATH” checked, plus Git for Windows.
 
 ```powershell
-pytest -q
+py -3.10 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+New-Item -ItemType Directory -Force models
+Invoke-WebRequest -Uri "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task" -OutFile "models\hand_landmarker.task"
+python -m pytest -q
+python scripts\run_ps4.py --input data\raw\your_clip.mp4
+streamlit run app\workbench.py
 ```
 
-## Run hand-tracking pipeline
+If PowerShell blocks activation, run `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` in that window and activate again.
+
+The sample clips are HEVC. OpenCV on Windows often cannot decode that. Install ffmpeg and transcode the clip you will run:
+
+```powershell
+winget install Gyan.FFmpeg
+ffmpeg -i data\raw\your_clip.mp4 -c:v libx264 -crf 18 -c:a copy data\raw\your_clip-h264.mp4
+python scripts\run_ps4.py --input data\raw\your_clip-h264.mp4
+```
+
+A short test is `--max-frames 300`.
+
+### Optional WiLoR mesh (NVIDIA GPU)
+
+WiLoR is a second pass. It needs an NVIDIA GPU, about 6 GB of VRAM, and Python 3.10. Close other GPU apps first. `nvidia-smi` should show the card before you install.
+
+```powershell
+python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+python -m pip install "git+https://github.com/warmshao/WiLoR-mini"
+python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+python scripts\run_mesh.py --input data\raw\your_clip-h264.mp4 --max-frames 60 --merge outputs\your_clip-h264.jsonl
+```
+
+The print must say `True` and the GPU name. The first run downloads weights from Hugging Face. Drop `--max-frames 60` for the full clip. If the process runs out of memory, rerun with `--stride 2`.
+
+On Linux, `bash scripts/setup_mesh_gpu.sh` does the same install.
+
+## Run outputs
 
 ```powershell
 python scripts/run_ps4.py --input data/raw/your_clip.mp4
@@ -84,6 +132,8 @@ python scripts/run_ps4.py --input data/raw/your_clip.mp4
 ```
 
 Useful flags: `--max-frames 300`, `--no-clahe`, `--viz-max-side 960`, `--no-camera-pose`, `--max-gap 5`, `--no-world`, `--world-smooth-window 11`, `--min-detection-confidence 0.4` (recall vs precision).
+
+After a run, `streamlit run app/workbench.py` opens the viewer for that clip.
 
 ## JSONL output format
 
@@ -149,6 +199,8 @@ python scripts/evaluate_hands.py `
 If no annotation file exists, the evaluator exits with a clear message and does not report fabricated accuracy.
 
 The `_report.json` **`accuracy`** block is operational (confidence, coverage, pitch text), not ground-truth landmark accuracy.
+
+After a run, `streamlit run app/workbench.py` opens the viewer for that clip.
 
 ## Pipeline
 
