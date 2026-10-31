@@ -68,7 +68,7 @@ python scripts/run_ps4.py --input data/raw/your_clip.mp4
 | --- | --- |
 | `<name>_sidebyside.mp4` | Source + 2D skeleton beside 3D hand plot |
 | `<name>.jsonl` | Per-frame landmarks (image, world, optional camera, optional world_fixed) |
-| `<name>_report.json` | **Operational** metrics: FPS, detection share, dropouts, jitter, world-frame stats |
+| `<name>_report.json` | **Operational** metrics: FPS, detection share, dropouts, jitter, world stats, `accuracy` slide summary |
 | `<name>_sim.json` | Wrist 6-DoF and finger curl angles for sim |
 | `<name>_world_sim.json` | Fixed-world wrist trajectories (smoothed) + finger curls |
 | `<name>_world_sim.csv` | Flat CSV of the same world trajectories for simulators |
@@ -83,7 +83,7 @@ python scripts/run_ps4.py --input data/raw/your_clip.mp4
 └────────────────────────────────┴────────────────────────────────┘
 ```
 
-Useful flags: `--max-frames 300`, `--no-clahe`, `--viz-max-side 960`, `--no-camera-pose`, `--max-gap 5`, `--no-world`, `--world-smooth-window 11`.
+Useful flags: `--max-frames 300`, `--no-clahe`, `--viz-max-side 960`, `--no-camera-pose`, `--max-gap 5`, `--no-world`, `--world-smooth-window 11`, `--min-detection-confidence 0.4` (recall vs precision).
 
 ## JSONL output format
 
@@ -147,6 +147,8 @@ python scripts/evaluate_hands.py `
 | **operational** | (from `_report.json`) | FPS, detection share, dropouts, mean confidence, world speed — **not** ground-truth accuracy |
 
 If no annotation file exists, the evaluator exits with a clear message and does not report fabricated accuracy.
+
+The `_report.json` **`accuracy`** block is operational (confidence, coverage, pitch text), not ground-truth landmark accuracy.
 
 ## Pipeline
 

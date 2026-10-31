@@ -31,6 +31,9 @@ def run_video(
     camera_pose: bool = True,
     world: bool = True,
     world_smooth_window: int = 11,
+    min_detection_confidence: float = 0.5,
+    min_presence_confidence: float = 0.5,
+    min_tracking_confidence: float = 0.5,
 ) -> dict:
     cap = cv2.VideoCapture(str(input_path))
     if not cap.isOpened():
@@ -39,7 +42,14 @@ def run_video(
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    runtime = HandRuntime(model_path, max_side=max_side, clahe=clahe)
+    runtime = HandRuntime(
+        model_path,
+        max_side=max_side,
+        clahe=clahe,
+        min_detection_confidence=min_detection_confidence,
+        min_presence_confidence=min_presence_confidence,
+        min_tracking_confidence=min_tracking_confidence,
+    )
     vo = CameraMotionEstimator(width, height) if (world and camera_pose) else None
     output_dir.mkdir(parents=True, exist_ok=True)
     stem = input_path.stem
@@ -131,7 +141,16 @@ def run_video(
         processed,
         fps=fps,
         fps_hands=index / max(hand_time, 1e-6),
-        config={"max_side": max_side, "clahe": clahe, "max_gap": max_gap},
+        config={
+            "max_side": max_side,
+            "clahe": clahe,
+            "max_gap": max_gap,
+            "world": world,
+            "world_smooth_window": world_smooth_window,
+            "min_detection_confidence": min_detection_confidence,
+            "min_presence_confidence": min_presence_confidence,
+            "min_tracking_confidence": min_tracking_confidence,
+        },
     )
     report["fps_end_to_end"] = round(index / total, 3)
     if report_world is not None:
