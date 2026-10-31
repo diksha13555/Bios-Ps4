@@ -127,7 +127,17 @@ python scripts/run_ps4.py --input data/raw/your_clip.mp4
 └────────────────────────────────┴────────────────────────────────┘
 ```
 
-Useful flags: `--max-frames 300`, `--no-clahe`, `--viz-max-side 960`, `--no-camera-pose`, `--max-gap 5`, `--no-world`, `--world-smooth-window 11`, `--min-detection-confidence 0.4` (recall vs precision).
+The 3D hand panel automatically fits the 21 landmarks, thickens the skeleton, and uses a display-only `1.25x` zoom. Increase it with `--world-zoom 1.5` (clamped to `1.0-2.0`). Zoom never changes the exported metric coordinates.
+
+For difficult egocentric footage, use the slower high-accuracy preset:
+
+```bash
+python scripts/run_ps4.py --input data/raw/your_clip.mp4 --high-accuracy --max-frames 300
+```
+
+This raises detector input to at least 1920 px, widens ROI recovery, and uses recall-oriented thresholds. It can improve detection coverage and dropouts at the cost of FPS; it does not replace ground-truth accuracy evaluation.
+
+Other useful flags: `--max-frames 300`, `--no-clahe`, `--viz-max-side 960`, `--no-camera-pose`, `--max-gap 5`, `--no-world`, `--world-smooth-window 11`, `--min-detection-confidence 0.4` (recall vs precision).
 
 ## JSONL output format
 
@@ -197,6 +207,18 @@ The `_report.json` **`accuracy`** block is operational (confidence, coverage, pi
 ## Pipeline
 
 MediaPipe Hand Landmarker (VIDEO mode) with CLAHE preprocessing, IoU plus center-distance identity tracking (not raw handedness), One Euro smoothing, gap fill up to 5 frames, optional `solvePnP` camera-frame landmarks, fixed world frame, and Matplotlib 3D rendering.
+
+## Trust, actions, and the scorecard
+
+After tracking, each of the 21 joints gets a trust value from 0 to 1. It combines the MediaPipe score, per-joint reprojection error, how fast that joint is jittering, and, when a WiLoR mesh is attached, how far the two estimates disagree. Inferred frames are capped at 0.35.
+
+Bone lengths are taken from the trusted frames. Low-trust joints are pulled back to those lengths, and a finger that curls past a hard stop is folded back. That is the blur and glove cleanup. One Euro smoothing also backs off when the hand score is low, and a second pass smooths low-trust joints more than high-trust ones.
+
+Gaps of at most 5 frames are filled from the frames on either side. Motion history is used only when it agrees with that fill. Longer gaps stay empty. Filled frames are marked `inferred`.
+
+Wrist speed and finger curl then label each frame as idle, reach, grasp, hold, or release. A grasp or hold also gets a coarse Feix-style name: power, precision, lateral, or other. The report's `factory` block turns those segments into cycle time, left/right balance, a RULA-style wrist score, and a smoothness number. `scorecard` reports bone-length stability, Left/Right disagreements, MediaPipe versus WiLoR agreement, and world-frame drift between a release and the next grasp.
+
+`joint_confidence`, `action`, and `grasp` are written into the JSONL, the sim JSON, and the world CSV. A downstream robot can ignore the low-trust frames.
 
 ```mermaid
 flowchart TB

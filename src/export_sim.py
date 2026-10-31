@@ -51,12 +51,17 @@ def export_sim(frames: list[dict], *, fps: float, source: str) -> dict:
         for hand in frame["hands"]:
             pts = np.asarray(hand.get("camera") or hand["world"], dtype=np.float64)
             w, quat = wrist_pose(pts)
+            confidence = hand.get("joint_confidence")
             hands.append(
                 {
                     "label": hand["label"],
                     "wrist_xyz": [round(v, 5) for v in w],
                     "wrist_quat_xyzw": None if quat is None else [round(v, 5) for v in quat],
                     "finger_curls_rad": {k: round(v, 5) for k, v in finger_curls(pts).items()},
+                    "joint_confidence": None if not confidence else [round(float(v), 4) for v in confidence],
+                    "action": hand.get("action"),
+                    "grasp": hand.get("grasp"),
+                    "inferred": bool(hand.get("inferred", False)),
                 }
             )
         exported.append({"frame": frame["frame"], "t_sec": frame["t_sec"], "hands": hands})
@@ -93,6 +98,12 @@ def export_world_sim(trajectories: dict[str, list[dict]], frames: list[dict], *,
                     "tracked": sample["tracked"],
                     "interpolated": sample["interpolated"],
                     "smoothed": sample.get("smoothed", False),
+                    "joint_confidence": None
+                    if source_hand is None or not source_hand.get("joint_confidence")
+                    else [round(float(v), 4) for v in source_hand["joint_confidence"]],
+                    "action": None if source_hand is None else source_hand.get("action"),
+                    "grasp": None if source_hand is None else source_hand.get("grasp"),
+                    "inferred": False if source_hand is None else bool(source_hand.get("inferred", False)),
                 }
             )
         t_sec = next(iter(entry.values()))["t_sec"]
@@ -115,7 +126,7 @@ def write_world_csv(path: Path, world_sim: dict) -> None:
     columns = [
         "frame", "t_sec", "label", "x", "y", "z", "qx", "qy", "qz", "qw",
         "curl_index", "curl_middle", "curl_ring", "curl_pinky", "curl_thumb",
-        "tracked", "interpolated",
+        "tracked", "interpolated", "inferred", "action", "grasp", "mean_joint_confidence",
     ]
     with path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=columns)
@@ -140,5 +151,11 @@ def write_world_csv(path: Path, world_sim: dict) -> None:
                         "curl_thumb": curls.get("thumb"),
                         "tracked": int(hand["tracked"]),
                         "interpolated": int(hand["interpolated"]),
+                        "inferred": int(hand.get("inferred", False)),
+                        "action": hand.get("action"),
+                        "grasp": hand.get("grasp"),
+                        "mean_joint_confidence": None
+                        if not hand.get("joint_confidence")
+                        else round(float(np.mean(hand["joint_confidence"])), 4),
                     }
                 )

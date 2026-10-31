@@ -9,13 +9,24 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from src.actions import annotate_actions
 from src.camera_frame import attach_camera
+from src.confidence import attach_confidence
 from src.export_sim import export_sim, export_world_sim, write_world_csv
+from src.factory import factory_metrics
+from src.geometry import enforce_hand_shape
 from src.hands import DEFAULT_MODEL, HandRuntime, landmarks_bbox, to_public_hand
 from src.metrics import build_report
-from src.smooth import interpolate_gaps
+from src.scorecard import build_scorecard
+from src.smooth import interpolate_gaps, smooth_by_confidence
 from src.visualize import SkeletonPanel, compose, resize_max_side
-from src.world import CameraMotionEstimator, attach_world, build_world_trajectories, smooth_world_trajectories
+from src.world import (
+    CameraMotionEstimator,
+    attach_world,
+    build_world_trajectories,
+    putdown_pickup_drift,
+    smooth_world_trajectories,
+)
 
 
 def run_video(
@@ -31,6 +42,8 @@ def run_video(
     camera_pose: bool = True,
     world: bool = True,
     world_smooth_window: int = 11,
+    world_zoom: float = 1.25,
+    high_accuracy: bool = False,
     min_detection_confidence: float = 0.5,
     min_presence_confidence: float = 0.5,
     min_tracking_confidence: float = 0.5,
@@ -42,6 +55,13 @@ def run_video(
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
+    if high_accuracy:
+        max_side = max(max_side, 1920)
+        min_detection_confidence = min(min_detection_confidence, 0.35)
+        min_presence_confidence = min(min_presence_confidence, 0.35)
+        min_tracking_confidence = min(min_tracking_confidence, 0.4)
+    roi_area = 0.12 if high_accuracy else 0.08
+    roi_expand = 1.65 if high_accuracy else 1.3
     runtime = HandRuntime(
         model_path,
         max_side=max_side,
@@ -49,6 +69,8 @@ def run_video(
         min_detection_confidence=min_detection_confidence,
         min_presence_confidence=min_presence_confidence,
         min_tracking_confidence=min_tracking_confidence,
+        roi_area=roi_area,
+        roi_expand=roi_expand,
     )
     vo = CameraMotionEstimator(width, height) if (world and camera_pose) else None
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -84,7 +106,7 @@ def run_video(
             filled_hands = [to_public_hand(h) for h in hands]
             view = resize_max_side(frame, viz_max_side)
             if panel is None:
-                panel = SkeletonPanel(view.shape[1], view.shape[0])
+                panel = SkeletonPanel(view.shape[1], view.shape[0], zoom=world_zoom)
             elapsed = max(time.perf_counter() - started, 1e-6)
             share = _share_quick(raw_frames)
             hud = f"FPS {index / elapsed:.1f}  hands {share['either']:.0%}  L {share['left']:.0%}  R {share['right']:.0%}"
@@ -131,6 +153,15 @@ def run_video(
     else:
         report_world = None
 
+    attach_confidence(processed, fps)
+    enforce_hand_shape(processed)
+    smooth_by_confidence(processed)
+    attach_confidence(processed, fps)
+    segments = annotate_actions(processed, fps)
+    factory = factory_metrics(processed, segments, fps)
+    drift = putdown_pickup_drift(processed)
+    scorecard = build_scorecard(processed, drift)
+
     with jsonl_path.open("w", encoding="utf-8") as f:
         for frame in processed:
             f.write(json.dumps(_json_frame(frame)) + "\n")
@@ -147,6 +178,10 @@ def run_video(
             "max_gap": max_gap,
             "world": world,
             "world_smooth_window": world_smooth_window,
+            "world_zoom": world_zoom,
+            "high_accuracy": high_accuracy,
+            "roi_area": roi_area,
+            "roi_expand": roi_expand,
             "min_detection_confidence": min_detection_confidence,
             "min_presence_confidence": min_presence_confidence,
             "min_tracking_confidence": min_tracking_confidence,
@@ -155,6 +190,9 @@ def run_video(
     report["fps_end_to_end"] = round(index / total, 3)
     if report_world is not None:
         report["world"] = report_world
+    report["actions"] = segments
+    report["factory"] = factory
+    report["scorecard"] = scorecard
     report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     sim_path.write_text(json.dumps(export_sim(processed, fps=fps, source=input_path.name), indent=2), encoding="utf-8")
     if world_doc is not None:
@@ -185,9 +223,17 @@ def _json_frame(frame: dict) -> dict:
             "score": round(float(h["score"]), 4),
             "tracked": h.get("tracked", True),
             "interpolated": h.get("interpolated", False),
+            "inferred": h.get("inferred", False),
             "world": _round3(h["world"]),
             "image": _round3(h["image"]),
         }
+        if h.get("joint_confidence") is not None:
+            item["joint_confidence"] = [round(float(v), 4) for v in h["joint_confidence"]]
+        if h.get("action"):
+            item["action"] = h["action"]
+            item["grasp"] = h.get("grasp")
+        if h.get("rula_wrist") is not None:
+            item["rula_wrist"] = h["rula_wrist"]
         if h.get("camera") is not None:
             item["camera"] = _round3(h["camera"])
             item["reproj_error_px"] = h.get("reproj_error_px")

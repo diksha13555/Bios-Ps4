@@ -29,6 +29,12 @@ def main(argv=None) -> int:
     p.add_argument("--no-camera-pose", action="store_true")
     p.add_argument("--no-world", action="store_true", help="Disable fixed-world trajectories and world sim export")
     p.add_argument("--world-smooth-window", type=int, default=11, help="Savgol window (frames) for world wrist trajectories")
+    p.add_argument("--world-zoom", type=float, default=1.25, help="Display-only 3D zoom, clamped to 1.0-2.0")
+    p.add_argument(
+        "--high-accuracy",
+        action="store_true",
+        help="Use 1920px+ detector input, wider ROI recovery, and recall-oriented thresholds (slower)",
+    )
     p.add_argument("--max-frames", type=int, default=None)
     p.add_argument("--max-gap", type=int, default=5)
     p.add_argument("--min-detection-confidence", type=float, default=0.5)
@@ -53,6 +59,8 @@ def main(argv=None) -> int:
         camera_pose=not args.no_camera_pose,
         world=not args.no_world,
         world_smooth_window=args.world_smooth_window,
+        world_zoom=args.world_zoom,
+        high_accuracy=args.high_accuracy,
         min_detection_confidence=args.min_detection_confidence,
         min_presence_confidence=args.min_presence_confidence,
         min_tracking_confidence=args.min_tracking_confidence,

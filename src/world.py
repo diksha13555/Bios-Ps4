@@ -290,3 +290,40 @@ def smooth_world_trajectories(
                 sample["smoothed"] = True
             smoothed.extend(segment)
         trajectories[label] = smoothed
+
+
+def putdown_pickup_drift(frames: list[dict], *, max_gap: int = 90) -> dict:
+    """Drift between a release and the next grasp, in the fixed world frame.
+
+    A put-down and a later pick-up of the same object should share a world
+    point. The distance between those wrist positions is world-frame drift
+    when no labelled object is available.
+    """
+    gaps = []
+    for label in ("Left", "Right"):
+        events = []
+        for frame in frames:
+            for hand in frame["hands"]:
+                if hand["label"] != label or hand.get("world_fixed") is None:
+                    continue
+                action = hand.get("action")
+                if action in {"release", "grasp"}:
+                    wrist = np.asarray(hand["world_fixed"], dtype=np.float64)[0, :3]
+                    events.append((frame["frame"], action, wrist))
+        for index, (frame_index, action, wrist) in enumerate(events):
+            if action != "release":
+                continue
+            for later_frame, later_action, later_wrist in events[index + 1 :]:
+                if later_frame - frame_index > max_gap:
+                    break
+                if later_action != "grasp":
+                    continue
+                gaps.append(float(np.linalg.norm(later_wrist - wrist)))
+                break
+    if not gaps:
+        return {"pairs": 0, "mean_m": None, "max_m": None}
+    return {
+        "pairs": len(gaps),
+        "mean_m": round(float(np.mean(gaps)), 5),
+        "max_m": round(float(np.max(gaps)), 5),
+    }

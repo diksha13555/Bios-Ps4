@@ -33,12 +33,19 @@ def hand_to_camera(world, image_norm, matrix, width, height, max_err: float = 12
         if float(np.mean(cam[:, 2])) <= 0:
             continue
         proj, _ = cv2.projectPoints(obj, rvec, tvec, matrix, dist)
-        err = float(np.linalg.norm(proj.reshape(-1, 2) - px, axis=1).mean())
+        per_joint = np.linalg.norm(proj.reshape(-1, 2) - px, axis=1)
+        err = float(per_joint.mean())
         if best is None or err < best[0]:
-            best = (err, cam.tolist(), rvec.reshape(-1).tolist(), tvec.reshape(-1).tolist())
+            best = (err, cam.tolist(), rvec.reshape(-1).tolist(), tvec.reshape(-1).tolist(), per_joint.tolist())
     if best is None or best[0] > max_err:
         return None
-    return {"camera": best[1], "rvec": best[2], "tvec": best[3], "reproj_error_px": best[0]}
+    return {
+        "camera": best[1],
+        "rvec": best[2],
+        "tvec": best[3],
+        "reproj_error_px": best[0],
+        "joint_reproj_px": best[4],
+    }
 
 
 def attach_camera(frames: list[dict], width: int, height: int) -> None:

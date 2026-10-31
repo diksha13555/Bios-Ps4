@@ -232,7 +232,7 @@ class OneEuroFilter:
         self._dx: np.ndarray | None = None
         self._t: float | None = None
 
-    def __call__(self, values, t: float) -> np.ndarray:
+    def __call__(self, values, t: float, trust=None) -> np.ndarray:
         current = np.asarray(values, dtype=np.float64).reshape(-1)
         if self._x is None or self._dx is None or self._t is None:
             self._x = current.copy()
@@ -244,6 +244,13 @@ class OneEuroFilter:
         alpha_d = _alpha(dt, self.d_cutoff)
         derivative_hat = alpha_d * derivative + (1.0 - alpha_d) * self._dx
         cutoff = self.min_cutoff + self.beta * np.abs(derivative_hat)
+        if trust is not None:
+            scale = np.clip(np.asarray(trust, dtype=np.float64), 0.05, 1.0)
+            if scale.ndim == 0 or scale.size == 1:
+                scale = np.full(cutoff.shape, float(np.reshape(scale, -1)[0]))
+            elif scale.size * 3 == cutoff.size:
+                scale = np.repeat(scale.reshape(-1), 3)
+            cutoff = cutoff * scale
         alpha = _alpha(dt, cutoff)
         hat = alpha * current + (1.0 - alpha) * self._x
         self._x = hat
@@ -276,6 +283,8 @@ def to_public_hand(hand: dict) -> dict:
         "world": hand["world"],
         "interpolated": bool(hand.get("interpolated", False)),
         "tracked": not bool(hand.get("interpolated", False)),
+        "inferred": bool(hand.get("inferred", False)),
+        "raw_label": hand.get("raw_label", hand["identity"]),
     }
 
 
@@ -345,14 +354,15 @@ class HandRuntime:
             if filt is None or hand.get("reset_filter"):
                 filt = OneEuroFilter()
                 self.filters[hand["identity"]] = filt
-            image = filt(hand["image"], t_sec).reshape(-1, 3)
+            trust = float(hand.get("score", 1.0))
+            image = filt(hand["image"], t_sec, trust=trust).reshape(-1, 3)
             hand["image"] = image.tolist()
             hand["bbox"] = landmarks_bbox(hand["image"])
             world_filt = self._world_filters.get(hand["identity"])
             if world_filt is None or hand.get("reset_filter"):
                 world_filt = OneEuroFilter(min_cutoff=1.0, beta=1.0)
                 self._world_filters[hand["identity"]] = world_filt
-            hand["world"] = world_filt(hand["world"], t_sec).reshape(-1, 3).tolist()
+            hand["world"] = world_filt(hand["world"], t_sec, trust=trust).reshape(-1, 3).tolist()
         for identity in list(self.filters):
             if identity not in live:
                 del self.filters[identity]

@@ -1,3 +1,10 @@
+# Local-only Streamlit viewer. Do not commit it.
+app/workbench.py
+src/workbench_data.py
+tests/test_workbench_data.py
+.streamlit/
+.commandcode/
+
 # Private hackathon footage. Do not commit it.
 *.mp4
 *.avi
