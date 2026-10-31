@@ -8,6 +8,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from src.mirrored_label import correct_detection_label
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MODEL = REPO_ROOT / "models" / "hand_landmarker.task"
 MODEL_URL = (
@@ -64,6 +66,15 @@ def landmarks_bbox(landmarks, pad: float = 0.02) -> tuple[float, float, float, f
     )
 
 
+def bbox_center(bbox: tuple[float, float, float, float]) -> tuple[float, float]:
+    return ((bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0)
+
+
+def center_distance(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> float:
+    ca, cb = bbox_center(a), bbox_center(b)
+    return float(((ca[0] - cb[0]) ** 2 + (ca[1] - cb[1]) ** 2) ** 0.5)
+
+
 def bbox_iou(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> float:
     ax1, ay1, ax2, ay2 = a
     bx1, by1, bx2, by2 = b
@@ -99,6 +110,7 @@ def assign_tracks(
     *,
     max_gap: int = 10,
     iou_min: float = 0.25,
+    center_dist_max: float = 0.18,
 ) -> tuple[list[dict], list[dict]]:
     """Match detections onto existing tracks by box overlap, not by the raw label."""
     pairs: list[tuple[float, int, int]] = []
@@ -115,6 +127,24 @@ def assign_tracks(
     used_dets: set[int] = set()
     matches: dict[int, int] = {}
     for _overlap, track_index, det_index in pairs:
+        if track_index in used_tracks or det_index in used_dets:
+            continue
+        used_tracks.add(track_index)
+        used_dets.add(det_index)
+        matches[track_index] = det_index
+
+    dist_pairs: list[tuple[float, int, int]] = []
+    for track_index, track in enumerate(tracks):
+        if track_index in used_tracks or track["missing"] > max_gap:
+            continue
+        for det_index, detection in enumerate(detections):
+            if det_index in used_dets:
+                continue
+            dist = center_distance(track["bbox"], detection["bbox"])
+            if dist <= center_dist_max:
+                dist_pairs.append((dist, track_index, det_index))
+    dist_pairs.sort()
+    for _dist, track_index, det_index in dist_pairs:
         if track_index in used_tracks or det_index in used_dets:
             continue
         used_tracks.add(track_index)
@@ -428,8 +458,7 @@ def _detect(landmarker, image_bgr: np.ndarray, meta: dict, timestamp_ms: int | N
         if len(image_pts) != 21:
             continue
         label = category[0].category_name
-        if label not in ("Left", "Right"):
-            label = "Right"
+        label, _spec = correct_detection_label(label)
         detections.append(
             {
                 "label": label,
