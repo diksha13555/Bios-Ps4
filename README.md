@@ -4,6 +4,33 @@ Track left and right hands with MediaPipe, smooth and stabilize identity across 
 
 Plan: [Notion — PS4 (24h)](https://www.notion.so/40aa9a9820cb818dbed3e37e150f2161)
 
+## System at a glance
+
+```mermaid
+flowchart LR
+    A["Egocentric video"] --> B["MediaPipe<br/>hand tracking"]
+    B --> C["Identity stabilization<br/>+ One Euro smoothing"]
+    C --> D["Approximate camera pose<br/>solvePnP"]
+    D --> E["Fixed world frame<br/>camera-motion fallback"]
+    C --> V["Side-by-side video<br/>2D skeleton + 3D panel"]
+    C --> J["Per-frame JSONL"]
+    D --> S["Camera-frame sim JSON"]
+    E --> W["World simulator export<br/>JSON + CSV"]
+    G["Optional WiLoR<br/>cloud GPU"] -.->|"MANO joints + mesh"| M["Merged JSONL<br/>+ mesh NPZ"]
+    J -.-> M
+
+    classDef input fill:#dbeafe,color:#172554,stroke:#3b82f6;
+    classDef process fill:#f3e8ff,color:#3b0764,stroke:#9333ea;
+    classDef output fill:#dcfce7,color:#052e16,stroke:#16a34a;
+    classDef optional fill:#fef3c7,color:#451a03,stroke:#d97706;
+    class A input;
+    class B,C,D,E process;
+    class V,J,S,W,M output;
+    class G optional;
+```
+
+The primary scored timeline is MediaPipe. WiLoR adds higher-fidelity MANO geometry without replacing the MediaPipe landmarks.
+
 ## Data rules
 
 Hackathon use only. Do not publish clips, frames, or screenshots. Do not commit video. `data/raw/` and `outputs/` are gitignored. Processed demos stay on a private Drive folder.
@@ -33,11 +60,42 @@ python scripts/run_ps4.py --input data/raw/your_clip.mp4
 | `<name>_world_sim.json` | Fixed-world wrist trajectories (smoothed) + finger curls |
 | `<name>_world_sim.csv` | Flat CSV of the same world trajectories for simulators |
 
+**Side-by-side render layout**
+
+```text
+┌────────────────────────────────┬────────────────────────────────┐
+│ SOURCE + 2D SKELETON           │ 3D HAND PANEL                  │
+│ Left/right labels + FPS HUD    │ Camera or world landmarks      │
+│ Tracked + interpolated hands   │ 21 joints + bone connections   │
+└────────────────────────────────┴────────────────────────────────┘
+```
+
 Useful flags: `--max-frames 300`, `--no-clahe`, `--viz-max-side 960`, `--no-camera-pose`, `--max-gap 5`, `--no-world`, `--world-smooth-window 11`.
 
 ## Pipeline
 
 MediaPipe Hand Landmarker (VIDEO mode) with CLAHE preprocessing, IoU-based left/right tracking, One Euro smoothing, gap fill up to 5 frames, optional `solvePnP` camera-frame landmarks, and Matplotlib 3D rendering.
+
+```mermaid
+flowchart TB
+    subgraph PER_FRAME["For every video frame"]
+        A["Resize + CLAHE"] --> B["VIDEO-mode detection"]
+        B --> C["IMAGE-mode ROI retry<br/>for small or occluded hands"]
+        C --> D["IoU identity matching<br/>not raw handedness"]
+        D --> E["One Euro smoothing<br/>image + world landmarks"]
+        A -.->|"background pixels"| F["Visual odometry<br/>hands masked out"]
+    end
+    subgraph POST["After the frame loop"]
+        G["Interpolate short gaps"] --> H["solvePnP camera landmarks"]
+        H --> I["Attach fixed world coordinates"]
+        I --> J["Smooth wrist trajectories"]
+    end
+    E --> G
+    F --> I
+    E --> K["Render side-by-side video"]
+    H --> L["JSONL + report + camera sim"]
+    J --> M["World sim JSON + CSV"]
+```
 
 ## Fixed world frame + simulator export
 
@@ -48,6 +106,35 @@ and per-frame pose composition. Rotation-dominant/low-parallax frames (where
 `recoverPose` fails cheirality) fall back to homography-decomposition rotation
 with no translation update. Failed frames carry the last pose forward and are
 marked `valid=False`.
+
+```mermaid
+flowchart LR
+    F0["Frame 0 camera<br/>WORLD ORIGIN"] -->|"accumulated R, t"| FI["Current camera<br/>frame i"]
+    FI -->|"solvePnP"| HC["21 hand joints<br/>camera coordinates"]
+    HC -->|"p_world = R × p_camera + t"| HW["world_fixed<br/>21 rigid joints"]
+    HW --> WT["Extract wrist<br/>position + quaternion"]
+    WT --> SM["Gap fill + trajectory smoothing"]
+    SM --> EX["Simulator JSON + CSV"]
+
+    classDef origin fill:#dbeafe,color:#172554,stroke:#3b82f6;
+    classDef hand fill:#f3e8ff,color:#3b0764,stroke:#9333ea;
+    classDef export fill:#dcfce7,color:#052e16,stroke:#16a34a;
+    class F0,FI origin;
+    class HC,HW,WT,SM hand;
+    class EX export;
+```
+
+**Coordinate convention**
+
+```text
+                       +z forward
+                          ↗
+                         /
+World = frame 0 camera  o ───────→ +x right
+                        │
+                        ↓
+                     +y down
+```
 
 - World frame = camera at frame 0. Axes: +x right, +y down, +z forward (OpenCV).
 - Rotation is exact; **translation is up-to-scale** (monocular scale ambiguity).
@@ -71,6 +158,23 @@ this export path unchanged.
 ## 3D mesh (WiLoR, cloud GPU)
 
 WiLoR detects the hand and returns 21 MANO joints plus a mesh. Joints are written in the same per-frame JSONL as MediaPipe. Vertices go to `<name>_mesh.npz` (`mesh_index` on each hand). `--merge` attaches a `mesh` object onto the matching MediaPipe hand and appends hands MediaPipe missed.
+
+```mermaid
+flowchart LR
+    A["MediaPipe JSONL<br/>scored timeline"] --> M["Frame + label merge"]
+    W["WiLoR predictions"] --> J["21 MANO joints<br/>+ mesh vertices"]
+    J --> M
+    M --> H["Matching hand<br/>attach mesh object"]
+    M --> N["Hand MediaPipe missed<br/>append WiLoR hand"]
+    J --> NPZ["Mesh NPZ<br/>vertices, joints, faces,<br/>camera translation"]
+
+    classDef base fill:#dbeafe,color:#172554,stroke:#3b82f6;
+    classDef mesh fill:#fef3c7,color:#451a03,stroke:#d97706;
+    classDef output fill:#dcfce7,color:#052e16,stroke:#16a34a;
+    class A,M base;
+    class W,J mesh;
+    class H,N,NPZ output;
+```
 
 ```bash
 bash scripts/setup_mesh_gpu.sh
