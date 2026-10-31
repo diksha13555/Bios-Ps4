@@ -87,7 +87,7 @@ python scripts\run_ps4.py --input data\raw\your_clip-h264.mp4
 
 A short test is `--max-frames 300`.
 
-### Open the dashboard
+### Open the TouchTrace dashboard
 
 From the repo root, with the virtual environment activated:
 
@@ -101,7 +101,7 @@ On Windows:
 streamlit run app\workbench.py
 ```
 
-Open [http://localhost:8501](http://localhost:8501). The page loads the processed run that has a scorecard. **Present** hides the sidebar for the judging view.
+Open [http://localhost:8501](http://localhost:8501). The hero shows **TouchTrace** in the top-left brand. The page loads the processed run that has a scorecard. **Present** hides the sidebar for the judging view.
 
 The sidebar is where a new clip is run. Choose an MP4, MOV, AVI, or MKV, set **Seconds to process** (`0` means the whole file), and press **Run analysis**. The MediaPipe model from the setup steps has to be on disk first. The upload is saved in `data/raw/`. The side-by-side video, JSONL, report, and sim files are written to `outputs/`. Both folders stay off GitHub. One minute of video takes a few minutes on CPU.
 

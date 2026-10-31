@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>MotionTwin AI — Every motion has proof</title>
+<title>TouchTrace — Every motion has proof</title>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{--paper:#eceff1;--ink:#12161b;--mut:#6b7480;--night:#07090d;--panel:#0e131a;--line:#233040;--ok:#2fd27a;--unc:#ffb020;--bad:#ff4d4d;--ghost:#a587ff;--blue:#4da3ff;--f:'Outfit',system-ui,sans-serif;--m:'JetBrains Mono',ui-monospace,monospace;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:dark}
@@ -101,7 +101,7 @@ pre{margin:0;background:#080c12;border:1px solid var(--line);border-radius:14px;
 footer{padding:50px 4vw;text-align:center;background:var(--night);color:#8795a6;font-size:14px}footer p{max-width:620px;margin:0 auto 10px;color:#d3dde9;font-size:20px;line-height:1.4}
 @media(prefers-reduced-motion:reduce){*{animation:none!important}}
 </style></head><body>
-<header class="nav"><b>MotionTwin AI</b><nav><a href="#usp">MotionTruth</a><a href="#studio">Studio</a><a href="#ghost">GhostHand</a><a href="#report">Report</a></nav><a class="pill" href="#studio">Open studio</a></header>
+<header class="nav"><b>TouchTrace</b><nav><a href="#usp">MotionTruth</a><a href="#studio">Studio</a><a href="#ghost">GhostHand</a><a href="#report">Report</a></nav><a class="pill" href="#studio">Open studio</a></header>
 
 <section id="hero"><div class="stick">
 <canvas id="hc" aria-label="A robot hand and a human hand reaching toward a glowing core"></canvas>
@@ -153,7 +153,7 @@ footer{padding:50px 4vw;text-align:center;background:var(--night);color:#8795a6;
 
 <section class="dk" id="report" style="background:#05070a"><div class="wrap"><h2>Robot-ready quality report</h2><p class="lead">This export updates live as you review segments in the studio. Downstream systems read the status of every segment before using it for robot learning.</p>
 <div class="box rdyb"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap"><h4 style="font-size:16px;margin:0">Report readiness</h4><span id="rdy"></span></div><div class="mb" style="height:10px;margin:12px 0 0"><i id="rbar" style="width:0"></i></div></div><div class="tw"><table id="rt"></table></div><p class="note">Every segment carries its own status, so a robot pipeline can skip or re-check weak data. Click a row to jump to it in the studio.</p><div class="rb"><button class="pill" id="cp">Copy JSON</button><button class="pill gh2" id="vj">View JSON</button><button class="pill gh2" id="rs">Reset reviews</button><a class="pill gh2" href="#studio">Back to studio</a></div><pre id="json" hidden></pre></div></section>
-<footer><p>We don’t just reconstruct how a hand moved. We show which parts of that motion can be trusted, which need review, and how the resulting trajectory can be used downstream.</p>MotionTwin AI · MotionTruth · GhostHand AI</footer>
+<footer><p>We don’t just reconstruct how a hand moved. We show which parts of that motion can be trusted, which need review, and how the resulting trajectory can be used downstream.</p>TouchTrace · MotionTruth · GhostHand AI</footer>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -267,7 +267,7 @@ function renderLists(){const fl=SEG.filter(s=>s.id);$('#wl').innerHTML=fl.map(s=
 $$('#wl button').forEach(b=>b.onclick=()=>markDone(b.dataset.id));
 const left=fl.filter(s=>!done[s.id]).length,mean=trust.reduce((a,b)=>a+b,0)/N;
 $('#rdy').innerHTML=left?`<span style="color:${COL.unc}">${fl.length-left} of ${fl.length} flagged segments reviewed</span>`:`<span style="color:${COL.ok}">All flagged segments reviewed. Ready for robot learning.</span>`;$('#rbar').style.width=(fl.length-left)/fl.length*100+'%';
-const rep={system:'MotionTwin AI',feature:'MotionTruth',clip:'K-3104',fps:FPS,frames:N,coordinate_frame:{name:'camera',units:'mm',note:'Estimated world landmarks; a motion-quality estimate, not metric ground truth'},mean_trust:+(mean).toFixed(1),inferred_joint_frames:inferred.reduce((a,b)=>a+b,0),segments:SEG.map(s=>({id:s.id||'clean',start_frame:s.a,end_frame:s.b,t_start:+(s.a/FPS).toFixed(2),t_end:+((s.b+1)/FPS).toFixed(2),status:s.id?(done[s.id]?'reviewed':'needs_review'):'reliable',reason:s.why||null,mean_trust:+(trust.slice(s.a,s.b+1).reduce((a,b)=>a+b,0)/(s.b-s.a+1)).toFixed(1)})),warnings:fl.filter(s=>!done[s.id]).map(s=>s.id+': '+s.why)};
+const rep={system:'TouchTrace',feature:'MotionTruth',clip:'K-3104',fps:FPS,frames:N,coordinate_frame:{name:'camera',units:'mm',note:'Estimated world landmarks; a motion-quality estimate, not metric ground truth'},mean_trust:+(mean).toFixed(1),inferred_joint_frames:inferred.reduce((a,b)=>a+b,0),segments:SEG.map(s=>({id:s.id||'clean',start_frame:s.a,end_frame:s.b,t_start:+(s.a/FPS).toFixed(2),t_end:+((s.b+1)/FPS).toFixed(2),status:s.id?(done[s.id]?'reviewed':'needs_review'):'reliable',reason:s.why||null,mean_trust:+(trust.slice(s.a,s.b+1).reduce((a,b)=>a+b,0)/(s.b-s.a+1)).toFixed(1)})),warnings:fl.filter(s=>!done[s.id]).map(s=>s.id+': '+s.why)};
 $('#json').textContent=JSON.stringify(rep,null,2);window.REP=rep;
 const BD={reliable:['Reliable','#2fd27a'],needs_review:['Needs review','#ffb020'],reviewed:['Reviewed','#4da3ff']};
 $('#rt').innerHTML='<tr><th>Segment</th><th>Frames</th><th>Time</th><th>Trust</th><th>Status</th><th>Reason</th><th></th></tr>'+rep.segments.map(s=>{let b=BD[s.status];if(s.status=='needs_review'&&SEG.find(x=>x.id==s.id).k=='rev')b=['Needs review','#ff4d4d'];return `<tr data-f="${s.start_frame}"><td>${s.id}</td><td>${s.start_frame}–${s.end_frame}</td><td>${s.t_start}–${s.t_end}s</td><td>${s.mean_trust}%</td><td><span class="bd" style="color:${b[1]};border-color:${b[1]}">${b[0]}</span></td><td>${s.reason||'Clean tracking'}</td><td>${s.status=='needs_review'?`<button data-id="${s.id}">Mark reviewed</button>`:''}</td></tr>`}).join('');

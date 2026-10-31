@@ -677,7 +677,7 @@ def _scene(trust: str) -> str:
     return f'''
     <section class="mt-scene">
       <header class="mt-top">
-        <a class="mt-brand" href="#studio">MotionTwin AI</a>
+        <a class="mt-brand" href="#studio">TouchTrace</a>
         <nav class="mt-pills">
           <a href="#studio">MotionTruth</a>
           <a href="#studio">Studio</a>
@@ -727,7 +727,7 @@ def _scene(trust: str) -> str:
 
 
 def main() -> None:
-    st.set_page_config(page_title="MotionTwin AI", layout="wide", initial_sidebar_state="collapsed")
+    st.set_page_config(page_title="TouchTrace", layout="wide", initial_sidebar_state="collapsed")
     st.markdown(f"<style>{Path(__file__).with_suffix('.css').read_text(encoding='utf-8')}</style>", unsafe_allow_html=True)
     st.session_state.setdefault("demo", False)
     runs = discover_runs(OUTPUT_DIR)
@@ -816,7 +816,7 @@ def main() -> None:
         st.markdown('<div id="report"></div>', unsafe_allow_html=True)
         with exports:
             _exports(paths, run["id"])
-    st.markdown('<div class="tt-footer"><span>MotionTwin AI</span><span>Every motion has proof.</span></div>', unsafe_allow_html=True)
+    st.markdown('<div class="tt-footer"><span>TouchTrace</span><span>Every motion has proof.</span></div>', unsafe_allow_html=True)
 
 
 if __name__ == "__main__":
