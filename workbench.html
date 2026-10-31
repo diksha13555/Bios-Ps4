@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TouchTrace Studio</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #000; }
+    iframe { border: 0; width: 100%; height: 100%; }
+    .bar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 2;
+      display: flex; gap: 12px; align-items: center; justify-content: space-between;
+      padding: 8px 14px; font: 13px/1.4 system-ui, sans-serif;
+      background: rgba(0,0,0,.85); color: #ccc; border-bottom: 1px solid #222;
+    }
+    .bar a { color: #fff; }
+    iframe { height: calc(100% - 40px); margin-top: 40px; }
+  </style>
+</head>
+<body>
+  <div class="bar">
+    <span><strong>TouchTrace</strong> studio · hosted via your live workbench tunnel</span>
+    <a href="/">← Landing</a>
+  </div>
+  <iframe id="studio" title="TouchTrace Streamlit workbench" allow="clipboard-read; clipboard-write"></iframe>
+  <script>
+    (function () {
+      var q = new URLSearchParams(location.search).get('src');
+      var src = q || localStorage.getItem('touchtraceWorkbenchSrc') || 'https://touchtrace-workbench.streamlit.app';
+      if (q) localStorage.setItem('touchtraceWorkbenchSrc', q);
+      document.getElementById('studio').src = src;
+    })();
+  </script>
+</body>
+</html>

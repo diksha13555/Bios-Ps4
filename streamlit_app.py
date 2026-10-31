@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import os
 import sys
 import urllib.request
 from pathlib import Path
+
+# Streamlit Cloud has no display; avoid OpenGL/EGL backends in OpenCV/MediaPipe.
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+os.environ.setdefault("MEDIAPIPE_DISABLE_GPU", "1")
 
 ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
