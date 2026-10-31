@@ -1,7 +1,7 @@
-mediapipe>=0.10.14
-opencv-python-headless>=4.8
-numpy>=1.24
-scipy>=1.11
-matplotlib>=3.7
-pytest>=7.4
+# Streamlit Cloud / local app (MediaPipe needs NumPy 1.x wheels on Linux)
+numpy>=1.26,<2
+mediapipe>=0.10.14,<0.11
+opencv-python-headless>=4.8,<4.12
+scipy>=1.11,<2
+matplotlib>=3.7,<4
 streamlit>=1.32
