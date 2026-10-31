@@ -101,7 +101,7 @@ pre{margin:0;background:#080c12;border:1px solid var(--line);border-radius:14px;
 footer{padding:50px 4vw;text-align:center;background:var(--night);color:#8795a6;font-size:14px}footer p{max-width:620px;margin:0 auto 10px;color:#d3dde9;font-size:20px;line-height:1.4}
 @media(prefers-reduced-motion:reduce){*{animation:none!important}}
 </style></head><body>
-<header class="nav"><b>TouchTrace</b><nav><a href="#usp">MotionTruth</a><a href="#studio">Studio</a><a href="#ghost">GhostHand</a><a href="#report">Report</a></nav><a class="pill" href="#studio">Open studio</a></header>
+<header class="nav"><b>TouchTrace</b><nav><a href="#usp">MotionTruth</a><a href="#studio">Studio</a><a href="#ghost">GhostHand</a><a href="#report">Report</a></nav><a class="pill" id="openWorkbench" href="#studio">Open studio</a></header>
 
 <section id="hero"><div class="stick">
 <canvas id="hc" aria-label="A robot hand and a human hand reaching toward a glowing core"></canvas>
@@ -296,4 +296,9 @@ $('#cp').onclick=async()=>{try{await navigator.clipboard.writeText($('#json').te
 $('#m1').innerHTML=Array.from({length:10},(_,i)=>`<i style="animation-delay:${i*.18}s"></i>`).join('');
 function loop(t){if(playing){if(!last)last=t;acc+=(t-last)/1000*FPS*(demo?.8:1);last=t;if(acc>=1){const k=Math.floor(acc);acc-=k;f+=k;if(f>=N){f=demo?N-1:0;if(demo){setPlay(false);demo=false}}draw()}}requestAnimationFrame(loop)}
 requestAnimationFrame(loop);renderLists();draw();
+(function(){
+  var workbench=new URLSearchParams(location.search).get('workbench')||'https://touchtrace-workbench.streamlit.app';
+  var open=document.getElementById('openWorkbench');
+  if(open){open.href=workbench;open.target='_blank';open.rel='noopener noreferrer'}
+})();
 </script></body></html>

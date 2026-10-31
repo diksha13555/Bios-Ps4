@@ -87,12 +87,25 @@ python scripts\run_ps4.py --input data\raw\your_clip-h264.mp4
 
 A short test is `--max-frames 300`.
 
-### Open the TouchTrace dashboard
+### Deploy the workbench (Streamlit Cloud)
+
+**Vercel only hosts the static landing page** (`index.html` at [touchtrace-six.vercel.app](https://touchtrace-six.vercel.app)). The **Streamlit workbench must run on Streamlit Community Cloud, Render, or your own server** — Vercel cannot keep a Python Streamlit process alive.
+
+1. Sign in at [share.streamlit.io](https://share.streamlit.io/) with GitHub.
+2. **New app** → repository `diksha13555/Bios-Ps4`, branch `main`.
+3. **Main file path:** `streamlit_app.py` (bootstraps folders and downloads the Hand Landmarker model on first boot).
+4. Deploy. Your app URL will look like `https://<name>.streamlit.app`.
+5. Optional: in `index.html`, set the **Open studio** link to that URL, or use **Render** with the included `render.yaml` (Blueprint → New → Blueprint).
+
+Cloud notes: CPU-only; keep **Seconds to process** small for demos (e.g. 30–50). Uploaded videos and `outputs/` are ephemeral on free tiers. WiLoR mesh still requires a separate GPU run locally.
+
+### Open the TouchTrace dashboard (local)
 
 From the repo root, with the virtual environment activated:
 
 ```bash
-streamlit run app/workbench.py
+streamlit run streamlit_app.py
+# or: streamlit run app/workbench.py
 ```
 
 On Windows:

@@ -1,0 +1,11 @@
+# Optional: deploy the Streamlit workbench on Render (Vercel cannot run Streamlit).
+services:
+  - type: web
+    name: touchtrace-workbench
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run streamlit_app.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
