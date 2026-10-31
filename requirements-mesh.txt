@@ -1,0 +1,5 @@
+# Cloud GPU only. Install with: bash scripts/setup_mesh_gpu.sh
+# WiLoR-mini (Python 3.10 recommended) pulls torch, ultralytics, and the MANO weights.
+# HaMeR is the alternate full repo: https://github.com/geopavlakos/hamer
+# Both emit 21 joints + a MANO mesh. This repo's runner uses WiLoR and writes the PS4 JSONL.
+git+https://github.com/warmshao/WiLoR-mini
