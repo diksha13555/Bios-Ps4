@@ -58,10 +58,7 @@ python -m pip install -r requirements.txt
 bash scripts/download_models.sh
 python -m pytest -q
 python scripts/run_ps4.py --input data/raw/your_clip.mp4
-streamlit run app/workbench.py
 ```
-
-The workbench opens at http://localhost:8501. It lists clips under `outputs/`, plays the side-by-side video, and scrubs the per-frame timeline. Demo mode hides the inspector.
 
 ### Windows (including an NVIDIA laptop)
 
@@ -76,7 +73,6 @@ New-Item -ItemType Directory -Force models
 Invoke-WebRequest -Uri "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task" -OutFile "models\hand_landmarker.task"
 python -m pytest -q
 python scripts\run_ps4.py --input data\raw\your_clip.mp4
-streamlit run app\workbench.py
 ```
 
 If PowerShell blocks activation, run `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` in that window and activate again.
@@ -132,8 +128,6 @@ python scripts/run_ps4.py --input data/raw/your_clip.mp4
 ```
 
 Useful flags: `--max-frames 300`, `--no-clahe`, `--viz-max-side 960`, `--no-camera-pose`, `--max-gap 5`, `--no-world`, `--world-smooth-window 11`, `--min-detection-confidence 0.4` (recall vs precision).
-
-After a run, `streamlit run app/workbench.py` opens the viewer for that clip.
 
 ## JSONL output format
 
@@ -199,8 +193,6 @@ python scripts/evaluate_hands.py `
 If no annotation file exists, the evaluator exits with a clear message and does not report fabricated accuracy.
 
 The `_report.json` **`accuracy`** block is operational (confidence, coverage, pitch text), not ground-truth landmark accuracy.
-
-After a run, `streamlit run app/workbench.py` opens the viewer for that clip.
 
 ## Pipeline
 
