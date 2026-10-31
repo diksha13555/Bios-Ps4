@@ -1,0 +1,3 @@
+# Optional WiLoR/HaMeR mesh on a short demo segment only.
+# Install PyTorch with CUDA first, then follow the WiLoR repo README.
+# The scored timeline always stays MediaPipe.

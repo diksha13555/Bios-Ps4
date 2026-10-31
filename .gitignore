@@ -1,0 +1,22 @@
+# Private hackathon footage. Do not commit it.
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+data/raw/**
+!data/raw/.gitkeep
+
+outputs/**
+!outputs/.gitkeep
+
+models/*.task
+models/*.pt
+models/*.onnx
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.DS_Store
