@@ -87,6 +87,18 @@ python scripts\run_ps4.py --input data\raw\your_clip-h264.mp4
 
 A short test is `--max-frames 300`.
 
+### Upload a clip in the browser
+
+With the virtual environment activated:
+
+```bash
+streamlit run app/workbench.py
+```
+
+On Windows that is `streamlit run app\workbench.py`.
+
+Open the local page, upload an MP4, choose how many seconds to process, and press Run. The file is saved in `data/raw/` and the side-by-side video, JSONL, report, and sim files are written to `outputs/`. Both folders stay off GitHub. Enter `0` to process the whole clip. One minute of video takes a few minutes on CPU. The MediaPipe model from the setup steps above has to be present before Run will start.
+
 ### Optional WiLoR mesh (NVIDIA GPU)
 
 WiLoR is a second pass. It needs an NVIDIA GPU, about 6 GB of VRAM, and Python 3.10. Close other GPU apps first. `nvidia-smi` should show the card before you install.
