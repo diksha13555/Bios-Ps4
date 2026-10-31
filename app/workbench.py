@@ -31,6 +31,7 @@ from src.workbench_data import (
     load_jsonl,
     load_report,
     max_frames_for_seconds,
+    mesh_surfaces,
     save_upload,
 )
 
@@ -59,7 +60,7 @@ def _clip_fps(path: Path) -> float:
     return fps
 
 
-def _skeleton_figure(frame: dict | None, coord: str):
+def _skeleton_figure(frame: dict | None, coord: str, surfaces: list[dict] | None = None):
     fig = plt.figure(figsize=(4.2, 4.2), dpi=120)
     ax = fig.add_subplot(111, projection="3d")
     fig.patch.set_facecolor("#121418")
@@ -69,11 +70,32 @@ def _skeleton_figure(frame: dict | None, coord: str):
         axis.label.set_color("#9aa3ad")
         axis.pane.set_facecolor("#121418")
         axis.pane.set_edgecolor("#2a3038")
-    if not frame or not frame.get("hands"):
+    surfaces = surfaces or []
+    if (not frame or not frame.get("hands")) and not surfaces:
         ax.set_title("No hands in this frame", color="#9aa3ad", fontsize=10)
         return fig
     clouds = []
-    for hand in frame["hands"]:
+    for surface in surfaces:
+        verts = np.asarray(surface["vertices"], dtype=np.float64)
+        faces = np.asarray(surface["faces"])
+        if verts.ndim != 2 or verts.shape[0] < 3 or faces.size == 0:
+            continue
+        color = LEFT_COLOR if surface.get("label") == "Left" else RIGHT_COLOR
+        ax.plot_trisurf(
+            verts[:, 0],
+            verts[:, 1],
+            verts[:, 2],
+            triangles=faces,
+            color=color,
+            alpha=0.55,
+            linewidth=0,
+            antialiased=False,
+            shade=True,
+        )
+        clouds.append(verts)
+    for hand in (frame or {}).get("hands", []):
+        if coord == "mesh":
+            break
         points = hand_points(hand, "image" if coord == "image" else coord)
         if points is None:
             continue
@@ -96,8 +118,9 @@ def _skeleton_figure(frame: dict | None, coord: str):
         ax.set_xlim(center[0] - span, center[0] + span)
         ax.set_ylim(center[1] - span, center[1] + span)
         ax.set_zlim(center[2] - span, center[2] + span)
-    ax.set_xlabel(coord)
-    ax.set_title(coord, color="#d7dde3", fontsize=10)
+        ax.set_box_aspect((1, 1, 1))
+    ax.set_xlabel("WiLoR mesh" if coord == "mesh" else coord)
+    ax.set_title("WiLoR mesh" if surfaces else coord, color="#d7dde3", fontsize=10)
     fig.tight_layout()
     return fig
 
@@ -117,6 +140,12 @@ def _timeline_figure(codes: list[int], index: int):
         spine.set_visible(False)
     fig.tight_layout(pad=0.2)
     return fig
+
+
+@st.cache_resource
+def _mesh_bundle(path: str) -> dict:
+    with np.load(path) as data:
+        return {key: data[key] for key in data.files}
 
 
 def _pct(value) -> str:
@@ -190,7 +219,9 @@ def main() -> None:
             stem = None
         else:
             current = st.session_state.get("stem")
-            index = clips.index(current) if current in clips else 0
+            if current not in clips:
+                current = next((name for name in clips if clip_paths(OUTPUT_DIR, name)["mesh_npz"] is not None), clips[0])
+            index = clips.index(current)
             stem = st.radio("Processed clip", clips, index=index, label_visibility="collapsed")
             st.session_state.stem = stem
         st.divider()
@@ -243,7 +274,18 @@ def main() -> None:
         for key in ("image", *COORD_KEYS):
             if key == "image" or any(hand_points(hand, key) is not None for hand in frame.get("hands", [])):
                 present.append(key)
+        if paths["mesh_npz"] is not None:
+            present = ["mesh", *present]
         coord = st.radio("Coordinates", present or ["world"], horizontal=True)
+        surfaces = []
+        if coord == "mesh" and paths["mesh_npz"] is not None:
+            bundle = _mesh_bundle(str(paths["mesh_npz"]))
+            surfaces = mesh_surfaces(bundle, int(frame.get("frame", index)))
+            fig = _skeleton_figure(frame, coord, surfaces)
+            st.pyplot(fig, clear_figure=True, use_container_width=False)
+            plt.close(fig)
+            if surfaces:
+                st.caption(f"WiLoR mesh, {len(surfaces)} hand(s), {surfaces[0]['vertices'].shape[0]} vertices")
         left, right = st.columns([1.3, 1])
         with left:
             if paths["video"] is not None:
@@ -252,9 +294,10 @@ def main() -> None:
                     st.image(image, caption=f"t = {frame.get('t_sec', 0)} s")
             st.dataframe(hand_rows(frame, "image" if coord == "image" else coord), hide_index=True)
         with right:
-            fig = _skeleton_figure(frame, coord)
-            st.pyplot(fig, clear_figure=True)
-            plt.close(fig)
+            if coord != "mesh":
+                fig = _skeleton_figure(frame, coord, surfaces)
+                st.pyplot(fig, clear_figure=True)
+                plt.close(fig)
 
     downloads = st.columns(4)
     files = [

@@ -1,12 +1,15 @@
 import json
 from pathlib import Path
 
+import numpy as np
+
 from src.workbench_data import (
     clip_paths,
     detection_codes,
     discover_clips,
     hand_rows,
     max_frames_for_seconds,
+    mesh_surfaces,
     safe_stem,
     save_upload,
 )
@@ -50,6 +53,29 @@ def test_detection_codes_and_hand_rows():
     assert table[0]["mean_trust"] == 0.8
     assert table[0]["action"] == "grasp"
     assert json.dumps(table)
+
+
+def test_mesh_in_a_result_folder_is_visible(tmp_path: Path):
+    folder = tmp_path / "mesh50"
+    folder.mkdir()
+    np.savez(
+        folder / "clip_mesh.npz",
+        vertices=np.zeros((1, 4, 3), np.float32),
+        frame_ids=np.array([3], np.int32),
+        labels=np.array([1], np.int8),
+        faces=np.array([[0, 1, 2]], np.int32),
+    )
+    assert "clip" in discover_clips(tmp_path)
+    assert clip_paths(tmp_path, "clip")["mesh_npz"].parent == folder
+    surfaces = mesh_surfaces(
+        {"vertices": np.zeros((1, 4, 3)), "frame_ids": np.array([3]), "labels": np.array([1]), "faces": np.zeros((1, 3))},
+        3,
+    )
+    assert surfaces[0]["label"] == "Right"
+    assert mesh_surfaces(
+        {"vertices": np.zeros((1, 4, 3)), "frame_ids": np.array([3]), "labels": np.array([1]), "faces": np.zeros((1, 3))},
+        1,
+    ) == []
 
 
 def test_upload_name_and_duration(tmp_path: Path):
